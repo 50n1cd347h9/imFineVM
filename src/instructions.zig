@@ -38,6 +38,10 @@ fn push(machine: *Machine) void {
     const length = 1 + opr_sz;
 
     const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.sp -= opr_sz;
+        cpu.ip += length;
+    }
     const memory: [*]u8 = machine.memory;
     const ip: u32 = cpu.ip;
     const sp: u32 = cpu.sp;
@@ -49,9 +53,6 @@ fn push(machine: *Machine) void {
             memory[sp - opr_sz + i] = memory[ip + i];
         }
     }
-
-    cpu.sp -= opr_sz;
-    cpu.ip += length;
 }
 
 fn pop(machine: *Machine) void {
