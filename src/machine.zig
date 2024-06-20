@@ -15,7 +15,7 @@ pub const Cpu = struct {
     sp: ByteWidth, // stack pointer
     fp: ByteWidth, // frame pointer
     gr: ByteWidth, // general purpose register
-    flag: u8,
+    flag: ByteWidth,
 };
 
 var memory = &[_]u8{0} ** MEMORY_SIZE;
