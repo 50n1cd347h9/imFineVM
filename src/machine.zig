@@ -36,3 +36,7 @@ pub fn initMachine() Machine {
         .memory = @ptrCast(@constCast(memory)),
     };
 }
+
+// flag:
+// 0 => zero
+// 1 => carry

@@ -8,6 +8,7 @@ const machine_config = @import("./machine_config.zig");
 const opr_sz = machine_config.opr_sz;
 const opc_sz = machine_config.opc_sz;
 const ByteWidth = machine_config.ByteWidth;
+const SignedByteWidth = machine_config.SignedByteWidth;
 const MEMORY_SIZE = machine_config.MEMORY_SIZE;
 const Machine: type = machine_.Machine;
 const RegIdx: type = machine_.RegIdx;
@@ -22,11 +23,11 @@ const flgs = struct {
     const is_reg: u8 = 0b000;
     const is_imm: u8 = 0b001;
     const is_ref: u8 = 0b010;
+    const is_rel: u8 = 0b000;
+    const is_abs: u8 = 0b001;
 };
 var instruction: [@intFromEnum(InsCode.count)]*const fn (*Machine) void = undefined; // array of pointer to instruction
-const InsCode = enum(usize) { push, pop, add, sub, mul, div, and_, or_, xor, shl_, rld, mld, jmp, jz, count };
-// mld -> memory load, rld -> register load, shl -> left shift
-// st -> store; store value in gr0;
+const InsCode = enum(usize) { push, pop, add, sub, mul, div, and_, or_, xor, shl_, ldr, ldm, cmp, jmp, jg, jz, jl, nop, count };
 
 pub fn initInstructions() []*const fn (*Machine) void {
     instruction[@intFromEnum(InsCode.push)] = push;
@@ -38,8 +39,11 @@ pub fn initInstructions() []*const fn (*Machine) void {
     instruction[@intFromEnum(InsCode.or_)] = or_;
     instruction[@intFromEnum(InsCode.xor)] = xor;
     instruction[@intFromEnum(InsCode.shl_)] = shl_;
-    instruction[@intFromEnum(InsCode.rld)] = rld;
-    instruction[@intFromEnum(InsCode.mld)] = mld;
+    instruction[@intFromEnum(InsCode.ldr)] = ldr;
+    instruction[@intFromEnum(InsCode.ldm)] = ldm;
+    instruction[@intFromEnum(InsCode.cmp)] = cmp;
+    instruction[@intFromEnum(InsCode.jmp)] = jmp;
+    instruction[@intFromEnum(InsCode.nop)] = nop;
 
     return &instruction;
 }
@@ -108,50 +112,62 @@ fn copy16(dst: [*]u8, src: [*]u8) void {
 }
 
 fn push(machine: *Machine) void {
+    print("push\n", .{});
     push32(machine);
 }
 
 fn pop(machine: *Machine) void {
+    print("pop\n", .{});
     pop32(machine);
 }
 
 fn add(machine: *Machine) void {
+    print("add\n", .{});
     add32(machine);
 }
 
 fn sub(machine: *Machine) void {
+    print("sub\n", .{});
     sub32(machine);
 }
 
 fn mul(machine: *Machine) void {
+    print("mul\n", .{});
     mul32(machine);
 }
 
 fn div(machine: *Machine) void {
+    print("div\n", .{});
     div32(machine);
 }
 
 fn and_(machine: *Machine) void {
+    print("and\n", .{});
     and32(machine);
 }
 
 fn or_(machine: *Machine) void {
+    print("or\n", .{});
     or32(machine);
 }
 
 fn xor(machine: *Machine) void {
+    print("xor\n", .{});
     xor32(machine);
 }
 
-fn rld(machine: *Machine) void {
-    rld32(machine);
+fn ldr(machine: *Machine) void {
+    print("rld\n", .{});
+    ldr32(machine);
 }
 
-fn mld(machine: *Machine) void {
-    mld32(machine);
+fn ldm(machine: *Machine) void {
+    print("mld\n", .{});
+    ldm32(machine);
 }
 
 fn shl_(machine: *Machine) void {
+    print("shl\n", .{});
     shl32(machine);
 }
 
@@ -185,7 +201,7 @@ fn push32(machine: *Machine) void {
             ip_ofs += 2;
         },
         else => {
-            print("pop: unrecognized flag: {b}\n", .{flg});
+            print("push: unrecognized flag: {b}\n", .{flg});
             return;
         },
     }
@@ -457,7 +473,7 @@ fn xor32(machine: *Machine) void {
 }
 
 // load to register
-fn rld32(machine: *Machine) void {
+fn ldr32(machine: *Machine) void {
     var ip_ofs: u8 = opc_sz;
     const cpu: *Cpu = &machine.cpu;
     defer {
@@ -491,7 +507,7 @@ fn rld32(machine: *Machine) void {
 }
 
 // load to memory pointed by register
-fn mld32(machine: *Machine) void {
+fn ldm32(machine: *Machine) void {
     var ip_ofs: u8 = opc_sz;
     const cpu: *Cpu = &machine.cpu;
     defer {
@@ -547,6 +563,60 @@ fn shl32(machine: *Machine) void {
         else => {
             return;
         },
+    }
+}
+
+fn cmp(machine: *Machine) void {
+    const ip_ofs: u8 = opc_sz;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip += ip_ofs;
+    }
+
+    const gr0: ByteWidth = cpu.gr0;
+    const gr1: ByteWidth = cpu.gr1;
+
+    if (gr0 > gr1) {
+        cpu.flag &= 0b00;
+    } else if (gr0 == gr1) {
+        cpu.flag &= 0b01;
+    } else {
+        cpu.flag &= 0b10;
+    }
+}
+
+fn jmp(machine: *Machine) void {
+    var dst_loc: ByteWidth = 0;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip = dst_loc;
+    }
+    const memory: [*]u8 = machine.memory;
+    const ip: ByteWidth = cpu.ip;
+    const flg: u8 = memory[ip] & flgs.flg_msk;
+    const gr0: ByteWidth = cpu.gr0;
+
+    switch (flg) {
+        flgs.is_rel => {
+            // if gr0 signed
+            if (gr0 >> 31 == 0b1) {
+                dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
+            } else {
+                dst_loc = cpu.ip + opc_sz + gr0;
+            }
+        },
+        flgs.is_abs => {
+            dst_loc = gr0;
+        },
+        else => print("unrecognized flag\n", .{}),
+    }
+}
+
+fn nop(machine: *Machine) void {
+    const ip_ofs: u8 = opc_sz;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip += ip_ofs;
     }
 }
 
