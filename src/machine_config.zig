@@ -6,5 +6,6 @@ pub const ByteWidth: type = u32;
 
 pub const Imm32: type = u32;
 pub const Imm16: type = u16;
+pub const Imm8: type = u8;
 pub const Ref: type = ByteWidth;
 pub const Reg: type = *ByteWidth;

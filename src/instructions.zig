@@ -14,6 +14,7 @@ const RegIdx: type = machine_.RegIdx;
 const Cpu: type = machine_.Cpu;
 const Imm32: type = machine_config.Imm32;
 const Imm16: type = machine_config.Imm16;
+const Imm8: type = machine_config.Imm8;
 const Ref: type = machine_config.Ref;
 const Reg: type = machine_config.Reg;
 const flgs = struct {
@@ -23,8 +24,9 @@ const flgs = struct {
     const is_ref: u8 = 0b010;
 };
 var instruction: [@intFromEnum(InsCode.count)]*const fn (*Machine) void = undefined; // array of pointer to instruction
-const InsCode = enum(usize) { push, pop, add, sub, mul, div, and_, or_, xor, rxt, rld, mld, jmp, jz, count };
-// mld -> memory load, rld -> register load, rxt -> right extend
+const InsCode = enum(usize) { push, pop, add, sub, mul, div, and_, or_, xor, shl_, rld, mld, jmp, jz, count };
+// mld -> memory load, rld -> register load, shl -> left shift
+// st -> store; store value in gr0;
 
 pub fn initInstructions() []*const fn (*Machine) void {
     instruction[@intFromEnum(InsCode.push)] = push;
@@ -35,6 +37,9 @@ pub fn initInstructions() []*const fn (*Machine) void {
     instruction[@intFromEnum(InsCode.and_)] = and_;
     instruction[@intFromEnum(InsCode.or_)] = or_;
     instruction[@intFromEnum(InsCode.xor)] = xor;
+    instruction[@intFromEnum(InsCode.shl_)] = shl_;
+    instruction[@intFromEnum(InsCode.rld)] = rld;
+    instruction[@intFromEnum(InsCode.mld)] = mld;
 
     return &instruction;
 }
@@ -144,6 +149,10 @@ fn rld(machine: *Machine) void {
 
 fn mld(machine: *Machine) void {
     mld32(machine);
+}
+
+fn shl_(machine: *Machine) void {
+    shl32(machine);
 }
 
 // push 32bit value to stack
@@ -447,6 +456,7 @@ fn xor32(machine: *Machine) void {
     }
 }
 
+// load to register
 fn rld32(machine: *Machine) void {
     var ip_ofs: u8 = opc_sz;
     const cpu: *Cpu = &machine.cpu;
@@ -480,6 +490,7 @@ fn rld32(machine: *Machine) void {
     }
 }
 
+// load to memory pointed by register
 fn mld32(machine: *Machine) void {
     var ip_ofs: u8 = opc_sz;
     const cpu: *Cpu = &machine.cpu;
@@ -509,6 +520,29 @@ fn mld32(machine: *Machine) void {
             const dst_ref: Ref = fetch32(memory + dst_reg.*);
             copy32(memory + dst_ref, memory + src_ref);
             ip_ofs += 3;
+        },
+        else => {
+            return;
+        },
+    }
+}
+
+fn shl32(machine: *Machine) void {
+    var ip_ofs: u8 = opc_sz;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip += ip_ofs;
+    }
+    const memory: [*]u8 = machine.memory;
+    const ip: u32 = cpu.ip;
+    const flg: u8 = memory[ip] & flgs.flg_msk;
+    const dst_reg: Reg = getReg(machine, 1);
+
+    switch (flg) {
+        flgs.is_imm => {
+            const src: Imm8 = memory[ip + 2];
+            dst_reg.* = shl(u32, dst_reg.*, src);
+            ip_ofs += 2;
         },
         else => {
             return;
