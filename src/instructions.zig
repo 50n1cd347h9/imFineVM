@@ -10,6 +10,7 @@ const opc_sz = machine_config.opc_sz;
 const ByteWidth = machine_config.ByteWidth;
 const MEMORY_SIZE = machine_config.MEMORY_SIZE;
 const Machine: type = machine_.Machine;
+const RegIdx: type = machine_.RegIdx;
 const Cpu: type = machine_.Cpu;
 const Imm32: type = machine_config.Imm32;
 const Imm16: type = machine_config.Imm16;
@@ -24,7 +25,6 @@ const flgs = struct {
 var instruction: [@intFromEnum(InsCode.count)]*const fn (*Machine) void = undefined; // array of pointer to instruction
 const InsCode = enum(usize) { push, pop, add, sub, mul, div, and_, or_, xor, rxt, rld, mld, jmp, jz, count };
 // mld -> memory load, rld -> register load, rxt -> right extend
-const RegIdx = enum(usize) { ip, sp, fp, gr, flag, count };
 
 pub fn initInstructions() []*const fn (*Machine) void {
     instruction[@intFromEnum(InsCode.push)] = push;
@@ -49,7 +49,8 @@ fn getReg(machine: *Machine, ofs_ip: u8) Reg {
         @intFromEnum(RegIdx.ip) => return &cpu.ip,
         @intFromEnum(RegIdx.sp) => return &cpu.sp,
         @intFromEnum(RegIdx.fp) => return &cpu.fp,
-        @intFromEnum(RegIdx.gr) => return &cpu.gr,
+        @intFromEnum(RegIdx.gr0) => return &cpu.gr0,
+        @intFromEnum(RegIdx.gr1) => return &cpu.gr1,
         @intFromEnum(RegIdx.flag) => return &cpu.flag,
         else => return &cpu.flag,
     }
