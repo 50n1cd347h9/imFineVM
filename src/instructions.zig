@@ -27,7 +27,12 @@ const flgs = struct {
     const is_ref: u8 = 0b010;
 };
 var instruction: [@intFromEnum(InsCode.count)]*const fn (*Machine) void = undefined; // array of pointer to instruction
-const InsCode = enum(usize) { push, pop, add, sub, mul, div, _and, _or, xor, ld, jmp, jz, count };
+const InsCode = enum(usize) { push, pop, add, sub, mul, div, and_, or_, xor, shh, ld, jmp, jz, count };
+// shh
+// shift half word
+// e.g.
+// shb gr
+// gr == 0x11110000
 const RegIdx = enum(usize) { ip, sp, fp, gr, flag, count };
 
 pub fn initInstructions() []*const fn (*Machine) void {
@@ -112,6 +117,10 @@ fn add(machine: *Machine) void {
     add32(machine);
 }
 
+fn sub(machine: *Machine) void {
+    sub32(machine);
+}
+
 // push 32bit value to stack
 fn push32(machine: *Machine) void {
     var ip_ofs = opc_sz;
@@ -150,27 +159,29 @@ fn push32(machine: *Machine) void {
 
 // TODO: error handling
 fn pop32(machine: *Machine) void {
-    const ip_ofs = opc_sz + opr_sz;
+    var ip_ofs = opc_sz;
+    const stack_ofs = 4;
     const cpu: *Cpu = &machine.cpu;
     defer {
-        cpu.sp += opr_sz;
+        cpu.sp += stack_ofs;
         cpu.ip += ip_ofs;
     }
     const memory: [*]u8 = machine.memory;
     const ip: u32 = cpu.ip;
     const sp: u32 = cpu.sp;
     const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst: Imm32 = fetch32(memory + ip + opc_sz);
 
-    // TODO: if regiter
     switch (flg) {
-        flgs.is_1_imm => {
-            print("flg is is_1_imm\n", .{});
-            return;
+        flgs.is_reg => {
+            const src: Imm32 = fetch32(memory + sp);
+            const dst_reg: Reg = getReg(machine, 1);
+            dst_reg.* = src;
+            ip_ofs += 1;
         },
-        flgs.is_1_ref => {
-            for (0..opr_sz) |i|
-                memory[dst + i] = memory[sp + i];
+        flgs.is_ref => {
+            const dst_ref: Ref = fetch16(memory + ip + 1);
+            copy32(memory + dst_ref, memory + sp);
+            ip_ofs += 2;
         },
         else => {
             print("pop: unrecognized flag: {b}\n", .{flg});
@@ -179,6 +190,7 @@ fn pop32(machine: *Machine) void {
     }
 }
 
+// TODO: if overflow
 fn add32(machine: *Machine) void {
     var ip_ofs: u8 = 1;
     const cpu: *Cpu = &machine.cpu;
@@ -202,8 +214,41 @@ fn add32(machine: *Machine) void {
             ip_ofs += 3;
         },
         flgs.is_ref => {
-            const src: Ref = fetch16(memory + ip + 2);
-            dst_reg.* += fetch16(memory + src);
+            const src_ref: Ref = fetch16(memory + ip + 2);
+            dst_reg.* += fetch32(memory + src_ref);
+            ip_ofs += 3;
+        },
+        else => {
+            return;
+        },
+    }
+}
+
+fn sub32(machine: *Machine) void {
+    const ip_ofs: u8 = 1;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip += ip_ofs;
+    }
+    const memory: [*]u8 = machine.memory;
+    const ip: u32 = cpu.ip;
+    const flg: u8 = memory[ip] & flgs.flg_msk;
+    const dst_reg: Reg = getReg(machine, 1);
+
+    switch (flg) {
+        flgs.is_reg => {
+            const src: Reg = getReg(machine, 2);
+            dst_reg.* -= src.*;
+            ip_ofs += 2;
+        },
+        flgs.is_imm => {
+            const src: Imm16 = fetch16(memory + ip + 2);
+            dst_reg.* -= src.*;
+            ip_ofs += 3;
+        },
+        flgs.is_ref => {
+            const src_ref: Ref = fetch16(memory + ip + 2);
+            dst_reg.* -= fetch32(memory + src_ref);
             ip_ofs += 3;
         },
         else => {
