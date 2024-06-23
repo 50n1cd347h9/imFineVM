@@ -15,30 +15,26 @@ const Imm32: type = machine_config.Imm32;
 const Imm16: type = machine_config.Imm16;
 const Ref: type = machine_config.Ref;
 const Reg: type = machine_config.Reg;
-
 const flgs = struct {
     const flg_msk: u8 = 0b00000111;
-    const is_1_imm: u8 = 0b00000000; // 1st oprand; e.g. opcode 1, 2
-    const is_1_ref: u8 = 0b01000000;
-    const is_2_imm: u8 = 0b00000000; // 2nd oprand
-    const is_2_ref: u8 = 0b10000000;
     const is_reg: u8 = 0b000;
     const is_imm: u8 = 0b001;
     const is_ref: u8 = 0b010;
 };
 var instruction: [@intFromEnum(InsCode.count)]*const fn (*Machine) void = undefined; // array of pointer to instruction
-const InsCode = enum(usize) { push, pop, add, sub, mul, div, and_, or_, xor, shh, ld, jmp, jz, count };
-// shh
-// shift half word
-// e.g.
-// shb gr
-// gr == 0x11110000
+const InsCode = enum(usize) { push, pop, add, sub, mul, div, and_, or_, xor, rxt, rld, mld, jmp, jz, count };
+// mld -> memory load, rld -> register load, rxt -> right extend
 const RegIdx = enum(usize) { ip, sp, fp, gr, flag, count };
 
 pub fn initInstructions() []*const fn (*Machine) void {
     instruction[@intFromEnum(InsCode.push)] = push;
     instruction[@intFromEnum(InsCode.pop)] = pop;
     instruction[@intFromEnum(InsCode.add)] = add;
+    instruction[@intFromEnum(InsCode.sub)] = sub;
+    instruction[@intFromEnum(InsCode.div)] = div;
+    instruction[@intFromEnum(InsCode.and_)] = and_;
+    instruction[@intFromEnum(InsCode.or_)] = or_;
+    instruction[@intFromEnum(InsCode.xor)] = xor;
 
     return &instruction;
 }
@@ -121,6 +117,34 @@ fn sub(machine: *Machine) void {
     sub32(machine);
 }
 
+fn mul(machine: *Machine) void {
+    mul32(machine);
+}
+
+fn div(machine: *Machine) void {
+    div32(machine);
+}
+
+fn and_(machine: *Machine) void {
+    and32(machine);
+}
+
+fn or_(machine: *Machine) void {
+    or32(machine);
+}
+
+fn xor(machine: *Machine) void {
+    xor32(machine);
+}
+
+fn rld(machine: *Machine) void {
+    rld32(machine);
+}
+
+fn mld(machine: *Machine) void {
+    mld32(machine);
+}
+
 // push 32bit value to stack
 fn push32(machine: *Machine) void {
     var ip_ofs = opc_sz;
@@ -192,7 +216,7 @@ fn pop32(machine: *Machine) void {
 
 // TODO: if overflow
 fn add32(machine: *Machine) void {
-    var ip_ofs: u8 = 1;
+    var ip_ofs: u8 = opc_sz;
     const cpu: *Cpu = &machine.cpu;
     defer {
         cpu.ip += ip_ofs;
@@ -204,8 +228,8 @@ fn add32(machine: *Machine) void {
 
     switch (flg) {
         flgs.is_reg => {
-            const src: Reg = getReg(machine, 2);
-            dst_reg.* += src.*;
+            const src_reg: Reg = getReg(machine, 2);
+            dst_reg.* += src_reg.*;
             ip_ofs += 2;
         },
         flgs.is_imm => {
@@ -225,7 +249,40 @@ fn add32(machine: *Machine) void {
 }
 
 fn sub32(machine: *Machine) void {
-    const ip_ofs: u8 = 1;
+    var ip_ofs: u8 = opc_sz;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip += ip_ofs;
+    }
+    const memory: [*]u8 = machine.memory;
+    const ip: u32 = cpu.ip;
+    const flg: u8 = memory[ip] & flgs.flg_msk;
+    const dst_reg: Reg = getReg(machine, 1);
+
+    switch (flg) {
+        flgs.is_reg => {
+            const src_reg: Reg = getReg(machine, 2);
+            dst_reg.* -= src_reg.*;
+            ip_ofs += 2;
+        },
+        flgs.is_imm => {
+            const src: Imm16 = fetch16(memory + ip + 2);
+            dst_reg.* -= src;
+            ip_ofs += 3;
+        },
+        flgs.is_ref => {
+            const src_ref: Ref = fetch16(memory + ip + 2);
+            dst_reg.* -= fetch32(memory + src_ref);
+            ip_ofs += 3;
+        },
+        else => {
+            return;
+        },
+    }
+}
+
+fn mul32(machine: *Machine) void {
+    var ip_ofs: u8 = opc_sz;
     const cpu: *Cpu = &machine.cpu;
     defer {
         cpu.ip += ip_ofs;
@@ -238,17 +295,218 @@ fn sub32(machine: *Machine) void {
     switch (flg) {
         flgs.is_reg => {
             const src: Reg = getReg(machine, 2);
-            dst_reg.* -= src.*;
+            dst_reg.* *= src.*;
             ip_ofs += 2;
         },
         flgs.is_imm => {
             const src: Imm16 = fetch16(memory + ip + 2);
-            dst_reg.* -= src.*;
+            dst_reg.* *= src;
             ip_ofs += 3;
         },
         flgs.is_ref => {
             const src_ref: Ref = fetch16(memory + ip + 2);
-            dst_reg.* -= fetch32(memory + src_ref);
+            dst_reg.* *= fetch32(memory + src_ref);
+            ip_ofs += 3;
+        },
+        else => {
+            return;
+        },
+    }
+}
+
+fn div32(machine: *Machine) void {
+    var ip_ofs: u8 = opc_sz;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip += ip_ofs;
+    }
+    const memory: [*]u8 = machine.memory;
+    const ip: u32 = cpu.ip;
+    const flg: u8 = memory[ip] & flgs.flg_msk;
+    const dst_reg: Reg = getReg(machine, 1);
+
+    switch (flg) {
+        flgs.is_reg => {
+            const src: Reg = getReg(machine, 2);
+            dst_reg.* /= src.*;
+            ip_ofs += 2;
+        },
+        flgs.is_imm => {
+            const src: Imm16 = fetch16(memory + ip + 2);
+            dst_reg.* /= src;
+            ip_ofs += 3;
+        },
+        flgs.is_ref => {
+            const src_ref: Ref = fetch16(memory + ip + 2);
+            dst_reg.* /= fetch32(memory + src_ref);
+            ip_ofs += 3;
+        },
+        else => {
+            return;
+        },
+    }
+}
+
+fn and32(machine: *Machine) void {
+    var ip_ofs: u8 = opc_sz;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip += ip_ofs;
+    }
+    const memory: [*]u8 = machine.memory;
+    const ip: u32 = cpu.ip;
+    const flg: u8 = memory[ip] & flgs.flg_msk;
+    const dst_reg: Reg = getReg(machine, 1);
+
+    switch (flg) {
+        flgs.is_reg => {
+            const src: Reg = getReg(machine, 2);
+            dst_reg.* &= src.*;
+            ip_ofs += 2;
+        },
+        flgs.is_imm => {
+            const src: Imm16 = fetch16(memory + ip + 2);
+            dst_reg.* &= src;
+            ip_ofs += 3;
+        },
+        flgs.is_ref => {
+            const src_ref: Ref = fetch16(memory + ip + 2);
+            dst_reg.* &= fetch32(memory + src_ref);
+            ip_ofs += 3;
+        },
+        else => {
+            return;
+        },
+    }
+}
+
+fn or32(machine: *Machine) void {
+    var ip_ofs: u8 = opc_sz;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip += ip_ofs;
+    }
+    const memory: [*]u8 = machine.memory;
+    const ip: u32 = cpu.ip;
+    const flg: u8 = memory[ip] & flgs.flg_msk;
+    const dst_reg: Reg = getReg(machine, 1);
+
+    switch (flg) {
+        flgs.is_reg => {
+            const src: Reg = getReg(machine, 2);
+            dst_reg.* |= src.*;
+            ip_ofs += 2;
+        },
+        flgs.is_imm => {
+            const src: Imm16 = fetch16(memory + ip + 2);
+            dst_reg.* |= src;
+            ip_ofs += 3;
+        },
+        flgs.is_ref => {
+            const src_ref: Ref = fetch16(memory + ip + 2);
+            dst_reg.* |= fetch32(memory + src_ref);
+            ip_ofs += 3;
+        },
+        else => {
+            return;
+        },
+    }
+}
+
+fn xor32(machine: *Machine) void {
+    var ip_ofs: u8 = opc_sz;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip += ip_ofs;
+    }
+    const memory: [*]u8 = machine.memory;
+    const ip: u32 = cpu.ip;
+    const flg: u8 = memory[ip] & flgs.flg_msk;
+    const dst_reg: Reg = getReg(machine, 1);
+
+    switch (flg) {
+        flgs.is_reg => {
+            const src: Reg = getReg(machine, 2);
+            dst_reg.* ^= src.*;
+            ip_ofs += 2;
+        },
+        flgs.is_imm => {
+            const src: Imm16 = fetch16(memory + ip + 2);
+            dst_reg.* ^= src;
+            ip_ofs += 3;
+        },
+        flgs.is_ref => {
+            const src_ref: Ref = fetch16(memory + ip + 2);
+            dst_reg.* ^= fetch32(memory + src_ref);
+            ip_ofs += 3;
+        },
+        else => {
+            return;
+        },
+    }
+}
+
+fn rld32(machine: *Machine) void {
+    var ip_ofs: u8 = opc_sz;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip += ip_ofs;
+    }
+    const memory: [*]u8 = machine.memory;
+    const ip: u32 = cpu.ip;
+    const flg: u8 = memory[ip] & flgs.flg_msk;
+    const dst_reg: Reg = getReg(machine, 1);
+
+    switch (flg) {
+        flgs.is_reg => {
+            const src_reg: Reg = getReg(machine, 2);
+            dst_reg.* = src_reg.*;
+            ip_ofs += 2;
+        },
+        flgs.is_imm => {
+            const src: Imm16 = fetch16(memory + ip + 2);
+            dst_reg.* = src;
+            ip_ofs += 3;
+        },
+        flgs.is_ref => {
+            const src_ref: Ref = fetch16(memory + ip + 2);
+            dst_reg.* = fetch32(memory + src_ref);
+            ip_ofs += 3;
+        },
+        else => {
+            return;
+        },
+    }
+}
+
+fn mld32(machine: *Machine) void {
+    var ip_ofs: u8 = opc_sz;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip += ip_ofs;
+    }
+    const memory: [*]u8 = machine.memory;
+    const ip: u32 = cpu.ip;
+    const flg: u8 = memory[ip] & flgs.flg_msk;
+    const dst_reg: Reg = getReg(machine, 1);
+
+    switch (flg) {
+        flgs.is_reg => {
+            const src_reg: Reg = getReg(machine, 2);
+            const dst_ref: Ref = fetch32(memory + dst_reg.*);
+            write32(memory + dst_ref, src_reg.*);
+            ip_ofs += 2;
+        },
+        flgs.is_imm => {
+            const src: Imm16 = fetch16(memory + ip + 2);
+            const dst_ref: Ref = fetch32(memory + dst_reg.*);
+            write32(memory + dst_ref, src);
+            ip_ofs += 3;
+        },
+        flgs.is_ref => {
+            const src_ref: Ref = fetch16(memory + ip + 2);
+            const dst_ref: Ref = fetch32(memory + dst_reg.*);
+            copy32(memory + dst_ref, memory + src_ref);
             ip_ofs += 3;
         },
         else => {
