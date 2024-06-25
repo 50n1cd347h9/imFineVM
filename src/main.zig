@@ -1,5 +1,4 @@
 const std = @import("std");
-const shr = std.math.shr;
 const print = std.debug.print;
 const instructions = @import("./instructions.zig");
 const machine_ = @import("./machine.zig");
@@ -28,7 +27,7 @@ pub fn main() !void {
     const length: usize = executable.readAll(memory[0..MEMORY_SIZE]) catch unreachable;
 
     while (true) {
-        const opcode: u8 = shr(u8, memory[cpu.ip], 3);
+        const opcode: u8 = memory[cpu.ip] >> 3;
 
         print("opcode = {x}\n", .{opcode});
         instruction[opcode](&machine);

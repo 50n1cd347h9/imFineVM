@@ -87,7 +87,7 @@ fn fetch32(mem_ref: [*]u8) u32 {
 fn write16(mem_ref: [*]u8, value: u16) void {
     const mask: u16 = 0x00ff;
     for (0..2) |i| {
-        const byte: u16 = shr(u16, value, @as(u16, @intCast(i)) * 8) & mask;
+        const byte: u16 = value >> (@as(u16, @intCast(i)) * 8) & mask;
         mem_ref[i] = @as(u8, @intCast(byte));
     }
 }
@@ -95,8 +95,9 @@ fn write16(mem_ref: [*]u8, value: u16) void {
 // write u32 value to [0..4]u8
 fn write32(mem_ref: [*]u8, value: u32) void {
     const mask: u32 = 0x000000ff;
+    print("value = {x}\n", .{value});
     for (0..4) |i| {
-        const byte: u32 = shr(u32, value, @as(u32, @intCast(i)) * 8) & mask;
+        const byte: u32 = value >> (@as(u5, @intCast(i)) * 8) & mask;
         mem_ref[i] = @as(u8, @intCast(byte));
     }
 }
@@ -557,7 +558,7 @@ fn shl32(machine: *Machine) void {
     switch (flg) {
         flgs.is_imm => {
             const src: Imm8 = memory[ip + 2];
-            dst_reg.* = shl(u32, dst_reg.*, src);
+            dst_reg.* = dst_reg.* << @as(u5, @intCast(src));
             ip_ofs += 2;
         },
         else => {
@@ -609,6 +610,101 @@ fn jmp(machine: *Machine) void {
             dst_loc = gr0;
         },
         else => print("unrecognized flag\n", .{}),
+    }
+}
+
+// jump if greater
+fn jg(machine: *Machine) void {
+    var dst_loc: ByteWidth = 0;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip = dst_loc;
+    }
+    const memory: [*]u8 = machine.memory;
+    const ip: ByteWidth = cpu.ip;
+    const flg: u8 = memory[ip] & flgs.flg_msk;
+    const gr0: ByteWidth = cpu.gr0;
+
+    if ((cpu.flag & 0b00) == 0b00) {
+        switch (flg) {
+            flgs.is_rel => {
+                // if gr0 signed
+                if (gr0 >> 31 == 0b1) {
+                    dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
+                } else {
+                    dst_loc = cpu.ip + opc_sz + gr0;
+                }
+            },
+            flgs.is_abs => {
+                dst_loc = gr0;
+            },
+            else => print("unrecognized flag\n", .{}),
+        }
+    } else {
+        dst_loc += cpu.ip + opc_sz;
+    }
+}
+
+// jump if equal
+fn je(machine: *Machine) void {
+    var dst_loc: ByteWidth = 0;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip = dst_loc;
+    }
+    const memory: [*]u8 = machine.memory;
+    const ip: ByteWidth = cpu.ip;
+    const flg: u8 = memory[ip] & flgs.flg_msk;
+    const gr0: ByteWidth = cpu.gr0;
+
+    if ((cpu.flag & 0b10) == 0b10) {
+        switch (flg) {
+            flgs.is_rel => {
+                // if gr0 minus
+                if (gr0 >> 31 == 0b1) {
+                    dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
+                } else {
+                    dst_loc = cpu.ip + opc_sz + gr0;
+                }
+            },
+            flgs.is_abs => {
+                dst_loc = gr0;
+            },
+            else => print("unrecognized flag\n", .{}),
+        }
+    } else {
+        dst_loc += cpu.ip + opc_sz;
+    }
+}
+
+fn jl(machine: *Machine) void {
+    var dst_loc: ByteWidth = 0;
+    const cpu: *Cpu = &machine.cpu;
+    defer {
+        cpu.ip = dst_loc;
+    }
+    const memory: [*]u8 = machine.memory;
+    const ip: ByteWidth = cpu.ip;
+    const flg: u8 = memory[ip] & flgs.flg_msk;
+    const gr0: ByteWidth = cpu.gr0;
+
+    if ((cpu.flag & 0b00) == 0b00) {
+        switch (flg) {
+            flgs.is_rel => {
+                // if gr0 signed
+                if (gr0 >> 31 == 0b1) {
+                    dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
+                } else {
+                    dst_loc = cpu.ip + opc_sz + gr0;
+                }
+            },
+            flgs.is_abs => {
+                dst_loc = gr0;
+            },
+            else => print("unrecognized flag\n", .{}),
+        }
+    } else {
+        dst_loc += cpu.ip + opc_sz;
     }
 }
 
