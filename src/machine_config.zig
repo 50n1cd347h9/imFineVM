@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = std.builtin;
 
-pub const MEMORY_SIZE: ByteWidth = 0x5000;
+pub const MEMORY_SIZE: ByteWidth = 0x10000;
 pub const opr_sz: u8 = @sizeOf(ByteWidth);
 pub const opc_sz: u8 = 1;
 

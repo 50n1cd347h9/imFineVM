@@ -1,8 +1,11 @@
-const std = @import("std");
-const print = std.debug.print;
 const instructions = @import("./instructions.zig");
 const machine_ = @import("./machine.zig");
 const machine_config = @import("./machine_config.zig");
+const std = @import("std");
+const time = std.time;
+const Instant = time.Instant;
+const Timer = time.Timer;
+const print = std.debug.print;
 
 const opr_sz = machine_config.opr_sz;
 const ByteWidth = machine_config.ByteWidth;
@@ -10,7 +13,6 @@ const SignedByteWidth = machine_config.SignedByteWidth;
 const MEMORY_SIZE = machine_config.MEMORY_SIZE;
 
 const Cpu: type = machine_.Cpu;
-const opc_msk: u8 = 0b11111000;
 
 pub fn main() !void {
     var machine = machine_.initMachine();
@@ -20,19 +22,26 @@ pub fn main() !void {
     const memory: [*]u8 = machine.memory;
 
     const executable = try std.fs.cwd().openFile(
-        "./src/exe.bin",
+        "./src/exe_.bin",
         .{ .mode = .read_only },
     );
     defer executable.close();
     const length: usize = executable.readAll(memory[0..MEMORY_SIZE]) catch unreachable;
 
+    const start = try Instant.now();
     while (true) {
         const opcode: u8 = memory[cpu.ip] >> 3;
 
-        print("opcode = {x}\n", .{opcode});
+        //print("opcode = {x}\n", .{opcode});
         instruction[opcode](&machine);
-        print("cpu = {!}\n\n", .{cpu});
+        //print("cpu = {!}\n\n", .{cpu});
 
         if (cpu.ip >= @as(ByteWidth, @intCast(length))) break;
     }
+
+    print("{!}\n", .{machine});
+
+    const end = try Instant.now();
+    const elapsed: f64 = @floatFromInt(end.since(start));
+    print("Time elapsed is: {d:.3}ms\n", .{elapsed / time.ns_per_ms});
 }

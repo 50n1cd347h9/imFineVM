@@ -70,27 +70,30 @@ fn getReg(machine: *Machine, ofs_ip: u8) Reg {
 
 fn fetch16(mem_ref: [*]u8) u16 {
     var value: u16 = 0;
-
-    for (mem_ref[0..2], 0..) |byte, i|
-        value += shl(u16, byte, @as(u16, @intCast(i)) * 8);
-
+    var tmp: u16 = 0;
+    for ([2]u4{ 0, 1 }) |i| {
+        tmp = @as(u16, @intCast(mem_ref[i])) << (i * 8);
+        value += tmp;
+    }
     return value;
 }
 
 fn fetch32(mem_ref: [*]u8) u32 {
     var value: u32 = 0;
-
-    for (mem_ref[0..4], 0..) |byte, i|
-        value += shl(u32, byte, @as(u32, @intCast(i)) * 8);
-
+    var tmp: u32 = 0;
+    for ([4]u5{ 0, 1, 2, 3 }) |i| {
+        tmp = @as(u32, @intCast(mem_ref[i])) << (i * 8);
+        value += tmp;
+    }
     return value;
 }
 
 // write u16 value to [0..2]u8
 fn write16(mem_ref: [*]u8, value: u16) void {
     const mask: u16 = 0x00ff;
-    for (0..2) |i| {
-        const byte: u16 = value >> (@as(u16, @intCast(i)) * 8) & mask;
+    var byte: u16 = 0;
+    for ([2]u5{ 0, 1 }) |i| {
+        byte = value >> (i * 8) & mask;
         mem_ref[i] = @as(u8, @intCast(byte));
     }
 }
@@ -98,9 +101,9 @@ fn write16(mem_ref: [*]u8, value: u16) void {
 // write u32 value to [0..4]u8
 fn write32(mem_ref: [*]u8, value: u32) void {
     const mask: u32 = 0x000000ff;
-    print("value = {x}\n", .{value});
-    for (0..4) |i| {
-        const byte: u32 = value >> (@as(u5, @intCast(i)) * 8) & mask;
+    var byte: u32 = 0;
+    for ([4]u5{ 0, 1, 2, 3 }) |i| {
+        byte = value >> (i * 8) & mask;
         mem_ref[i] = @as(u8, @intCast(byte));
     }
 }
@@ -116,62 +119,50 @@ fn copy16(dst: [*]u8, src: [*]u8) void {
 }
 
 fn push(machine: *Machine) void {
-    print("push\n", .{});
     push32(machine);
 }
 
 fn pop(machine: *Machine) void {
-    print("pop\n", .{});
     pop32(machine);
 }
 
 fn add(machine: *Machine) void {
-    print("add\n", .{});
     add32(machine);
 }
 
 fn sub(machine: *Machine) void {
-    print("sub\n", .{});
     sub32(machine);
 }
 
 fn mul(machine: *Machine) void {
-    print("mul\n", .{});
     mul32(machine);
 }
 
 fn div(machine: *Machine) void {
-    print("div\n", .{});
     div32(machine);
 }
 
 fn and_(machine: *Machine) void {
-    print("and\n", .{});
     and32(machine);
 }
 
 fn or_(machine: *Machine) void {
-    print("or\n", .{});
     or32(machine);
 }
 
 fn xor(machine: *Machine) void {
-    print("xor\n", .{});
     xor32(machine);
 }
 
 fn ldr(machine: *Machine) void {
-    print("rld\n", .{});
     ldr32(machine);
 }
 
 fn ldm(machine: *Machine) void {
-    print("mld\n", .{});
     ldm32(machine);
 }
 
 fn shl_(machine: *Machine) void {
-    print("shl\n", .{});
     shl32(machine);
 }
 
