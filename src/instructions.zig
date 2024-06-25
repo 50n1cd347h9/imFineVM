@@ -593,7 +593,7 @@ fn jmp(machine: *Machine) void {
 
     switch (flg) {
         flgs.is_rel => {
-            // if gr0 signed
+            // if gr0 minus
             if (gr0 >> 31 == 0b1) {
                 dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
             } else {
@@ -622,7 +622,7 @@ fn jg(machine: *Machine) void {
     if ((cpu.flag & 0b00) == 0b00) {
         switch (flg) {
             flgs.is_rel => {
-                // if gr0 signed
+                // if gr0 minus
                 if (gr0 >> 31 == 0b1) {
                     dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
                 } else {
@@ -709,6 +709,3 @@ fn nop(machine: *Machine) void {
         cpu.ip += ip_ofs;
     }
 }
-
-fn pop64() void {}
-fn push64() void {}

@@ -28,6 +28,7 @@ pub fn main() !void {
     defer executable.close();
     const length: usize = executable.readAll(memory[0..MEMORY_SIZE]) catch unreachable;
 
+    print("{!}\n", .{@TypeOf(executable)});
     const start = try Instant.now();
     while (true) {
         const opcode: u8 = memory[cpu.ip] >> 3;
