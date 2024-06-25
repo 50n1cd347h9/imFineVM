@@ -43,6 +43,9 @@ pub fn initInstructions() []*const fn (*Machine) void {
     instruction[@intFromEnum(InsCode.ldm)] = ldm;
     instruction[@intFromEnum(InsCode.cmp)] = cmp;
     instruction[@intFromEnum(InsCode.jmp)] = jmp;
+    instruction[@intFromEnum(InsCode.jz)] = jz;
+    instruction[@intFromEnum(InsCode.jg)] = jg;
+    instruction[@intFromEnum(InsCode.jl)] = jl;
     instruction[@intFromEnum(InsCode.nop)] = nop;
 
     return &instruction;
@@ -646,7 +649,7 @@ fn jg(machine: *Machine) void {
 }
 
 // jump if equal
-fn je(machine: *Machine) void {
+fn jz(machine: *Machine) void {
     var dst_loc: ByteWidth = 0;
     const cpu: *Cpu = &machine.cpu;
     defer {
