@@ -397,8 +397,20 @@ const Instruction = struct {
             self.cpu.ip += self.ip_ofs;
         }
         const dst = (self.first_reg).*;
-        const src = (getReg(self.cpu, self.memory[self.ip + 2])).*;
-
+        var src: ByteWidth = 0;
+        switch (self.ext) {
+            Ext.imm => src = fetch(self.memory + self.ip + 2, self.imm_bytes),
+            Ext.reg => src = (getReg(self.cpu, self.memory[self.ip + 2])).*,
+            Ext.imm_ref => {
+                const src_ref: Ref = fetch(self.memory + self.ip + 2, machine_bytes);
+                src = fetch(self.memory + src_ref, machine_bytes);
+            },
+            Ext.reg_ref => {
+                const src_ref: Ref = (getReg(self.cpu, self.memory[self.ip + 2])).*;
+                src = fetch(self.memory + src_ref, machine_bytes);
+            },
+            else => unreachable,
+        }
         if (dst > src) {
             self.cpu.flag &= 0b00;
         } else if (dst == src) {
