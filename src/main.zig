@@ -22,18 +22,21 @@ pub fn main() !void {
     const memory: [*]u8 = machine.memory;
 
     const executable = try std.fs.cwd().openFile(
-        "./src/executable/add.bin",
+        "./src/executable/exe_.bin",
         .{ .mode = .read_only },
     );
     defer executable.close();
     const length: usize = executable.readAll(memory[0..MEMORY_SIZE]) catch unreachable;
-
+    //_ = length;
     print("{!}\n\n", .{machine});
 
+    var prev_ip: ByteWidth = 0;
     const start = try Instant.now();
     while (true) {
         const opcode: u8 = memory[cpu.ip] >> 2;
+        prev_ip = cpu.ip;
         instruction[opcode](&machine);
+        //if (cpu.ip == prev_ip) break;
         if (cpu.ip >= @as(ByteWidth, @intCast(length))) break;
     }
     const end = try Instant.now();

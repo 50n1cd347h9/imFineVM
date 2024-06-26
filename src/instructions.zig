@@ -156,6 +156,10 @@ const Instruction = struct {
 
     fn push(self: *Instruction) void {
         self.ip_ofs += self.imm_bytes;
+        defer {
+            self.cpu.ip += self.ip_ofs;
+            self.cpu.sp -= machine_bytes;
+        }
         switch (self.ext) {
             Ext.imm => {
                 copy(self.memory + self.sp - machine_bytes, self.memory + self.ip + 2, self.imm_bytes);
@@ -245,7 +249,6 @@ const Instruction = struct {
         const cpu: *Cpu = self.cpu;
         defer {
             self.cpu.ip += self.ip_ofs;
-            print("ip = {x}\n", .{self.cpu.ip});
         }
         self.ip_ofs += self.imm_bytes;
         switch (self.ext) {
@@ -282,7 +285,6 @@ const Instruction = struct {
         const cpu: *Cpu = self.cpu;
         defer {
             self.cpu.ip += self.ip_ofs;
-            print("ip = {x}\n", .{self.cpu.ip});
         }
         self.ip_ofs += self.imm_bytes;
         switch (self.ext) {
