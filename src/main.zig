@@ -31,7 +31,7 @@ pub fn main() !void {
     print("{!}\n", .{@TypeOf(executable)});
     const start = try Instant.now();
     while (true) {
-        const opcode: u8 = memory[cpu.ip] >> 3;
+        const opcode: u8 = memory[cpu.ip] >> 2;
 
         //print("opcode = {x}\n", .{opcode});
         instruction[opcode](&machine);
