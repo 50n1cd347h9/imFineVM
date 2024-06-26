@@ -100,10 +100,6 @@ const Instruction = struct {
         const imm_bytes: u8 = self.imm_bytes;
         const dst_reg: Reg = self.first_reg;
         const cpu: *Cpu = self.cpu;
-        defer {
-            self.cpu.ip += self.ip_ofs;
-            print("ip = {x}\n", .{self.cpu.ip});
-        }
         self.ip_ofs += self.imm_bytes;
         switch (self.ext) {
             Ext.imm => {
@@ -182,6 +178,9 @@ const Instruction = struct {
         }
     }
     fn add(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
         _ = self.arithmetic_switching(struct {
             pub const _self = self;
             fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
@@ -192,6 +191,9 @@ const Instruction = struct {
         }.execute);
     }
     fn sub(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
         _ = self.arithmetic_switching(struct {
             fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
                 dst_reg.* -= src;
@@ -200,6 +202,9 @@ const Instruction = struct {
         }.execute);
     }
     fn mul(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
         _ = self.arithmetic_switching(struct {
             fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
                 dst_reg.* *= src;
@@ -208,6 +213,9 @@ const Instruction = struct {
         }.execute);
     }
     fn div(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
         _ = self.arithmetic_switching(struct {
             fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
                 dst_reg.* /= src;
@@ -217,6 +225,9 @@ const Instruction = struct {
     }
 
     fn and_(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
         _ = self.arithmetic_switching(struct {
             fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
                 dst_reg.* /= src;
@@ -225,6 +236,9 @@ const Instruction = struct {
         }.execute);
     }
     fn or_(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
         _ = self.arithmetic_switching(struct {
             fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
                 dst_reg.* /= src;
@@ -233,6 +247,9 @@ const Instruction = struct {
         }.execute);
     }
     fn xor(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
         _ = self.arithmetic_switching(struct {
             fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
                 dst_reg.* /= src;
@@ -242,15 +259,15 @@ const Instruction = struct {
     }
 
     fn ldr(self: *Instruction) void {
+        self.ip_ofs += self.imm_bytes;
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
         const memory: [*]u8 = self.memory;
         const ip: ByteWidth = self.ip;
         const imm_bytes: u8 = self.imm_bytes;
         const dst_reg: Reg = self.first_reg;
         const cpu: *Cpu = self.cpu;
-        defer {
-            self.cpu.ip += self.ip_ofs;
-        }
-        self.ip_ofs += self.imm_bytes;
         switch (self.ext) {
             Ext.imm => {
                 const src = fetch(memory + ip + 2, imm_bytes);
@@ -277,16 +294,16 @@ const Instruction = struct {
     }
 
     fn ldm(self: *Instruction) void {
+        self.ip_ofs += self.imm_bytes;
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
         const memory: [*]u8 = self.memory;
         const ip: ByteWidth = self.ip;
         const imm_bytes: u8 = self.imm_bytes;
         const dst_reg: Reg = self.first_reg;
         const dst_ref: Ref = dst_reg.*;
         const cpu: *Cpu = self.cpu;
-        defer {
-            self.cpu.ip += self.ip_ofs;
-        }
-        self.ip_ofs += self.imm_bytes;
         switch (self.ext) {
             Ext.imm => {
                 copy(memory + dst_ref, memory + ip + 2, imm_bytes);
@@ -310,11 +327,11 @@ const Instruction = struct {
     }
 
     fn shl_(self: *Instruction) void {
-        const dst_reg: Reg = self.first_reg;
+        self.ip_ofs += self.imm_bytes;
         defer {
             self.cpu.ip += self.ip_ofs;
         }
-        self.ip_ofs += self.imm_bytes;
+        const dst_reg: Reg = self.first_reg;
         switch (self.ext) {
             Ext.imm => {
                 // src bytes is always 1.
