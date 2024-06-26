@@ -19,8 +19,6 @@ pub const Cpu = struct {
     flag: ByteWidth,
 };
 
-pub const RegIdx = enum(usize) { ip, sp, fp, flag, gr0, gr1, count };
-
 var memory = &[_]u8{0} ** MEMORY_SIZE;
 
 pub fn initMachine() Machine {
@@ -28,7 +26,7 @@ pub fn initMachine() Machine {
         .cpu = .{
             .ip = 0,
             .sp = MEMORY_SIZE - 1,
-            .fp = 0,
+            .fp = MEMORY_SIZE - 1,
             .flag = 0,
             .gr0 = 0,
             .gr1 = 0,

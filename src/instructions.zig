@@ -392,6 +392,22 @@ const Instruction = struct {
         }
     }
 
+    fn cmp(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
+        const dst = (self.first_reg).*;
+        const src = (getReg(self.cpu, self.memory[self.ip + 2])).*;
+
+        if (dst > src) {
+            self.cpu.flag &= 0b00;
+        } else if (dst == src) {
+            self.cpu.flag &= 0b01;
+        } else {
+            self.cpu.flag &= 0b10;
+        }
+    }
+
     fn hoge(self: *Instruction) void {
         print("ip_ofs = {}\n", .{self.ip_ofs});
     }
@@ -472,22 +488,9 @@ fn shl_(machine: *Machine) void {
 }
 
 fn cmp(machine: *Machine) void {
-    const ip_ofs: u8 = opc_sz;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip += ip_ofs;
-    }
-
-    const gr0: ByteWidth = cpu.gr0;
-    const gr1: ByteWidth = cpu.gr1;
-
-    if (gr0 > gr1) {
-        cpu.flag &= 0b00;
-    } else if (gr0 == gr1) {
-        cpu.flag &= 0b01;
-    } else {
-        cpu.flag &= 0b10;
-    }
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.cmp();
 }
 
 fn jmp(machine: *Machine) void {
