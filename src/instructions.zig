@@ -1,6 +1,9 @@
 const std = @import("std");
+const builtin = std.builtin;
 const print = std.debug.print;
 const pow = std.math.pow;
+const shl = std.math.shl;
+const shr = std.math.shr;
 const machine_ = @import("./machine.zig");
 const machine_config = @import("./machine_config.zig");
 
@@ -46,7 +49,7 @@ pub fn initInstructions() []*const fn (*Machine) void {
     return &instruction;
 }
 
-fn getReg(cpu: *Machine.cpu, reg: u8) Reg {
+fn getReg(cpu: *Cpu, reg: u8) Reg {
     switch (reg) {
         @intFromEnum(RegIdx.ip) => return &cpu.ip,
         @intFromEnum(RegIdx.sp) => return &cpu.sp,
@@ -58,11 +61,11 @@ fn getReg(cpu: *Machine.cpu, reg: u8) Reg {
     }
 }
 
-fn fetch(mem_ref: [*]u8, src_bytes: u8) void {
-    var value: u32 = 0;
-    var tmp: u32 = 0;
+fn fetch(mem_ref: [*]u8, src_bytes: u8) ByteWidth {
+    var value: ByteWidth = 0;
     for (0..src_bytes) |i| {
-        tmp = @as(u32, @intCast(mem_ref[i])) << (i * 8);
+        const ofs: u5 = @intCast(i);
+        const tmp: ByteWidth = @as(u32, @intCast(mem_ref[i])) << (ofs * 8);
         value += tmp;
     }
     return value;
@@ -71,15 +74,15 @@ fn fetch(mem_ref: [*]u8, src_bytes: u8) void {
 fn copy(dst: [*]u8, src: [*]u8, src_bytes: u8) void {
     for (0..src_bytes) |i|
         dst[i] = src[i];
-
     for (src_bytes..machine_bytes) |i|
         dst[i] = 0x00;
 }
 
 fn write(mem_ref: [*]u8, value: anytype, src_bytes: u8) void {
-    var byte: u16 = 0;
     for (0..src_bytes) |i| {
-        byte = value >> (src_bytes - (i + 1)) << (src_bytes - 1);
+        const ofs: u5 = @intCast(i);
+        const tmp = shr(ByteWidth, value, src_bytes - (ofs + 1));
+        const byte = shl(ByteWidth, tmp, src_bytes - 1);
         mem_ref[i] = @as(u8, @intCast(byte));
     }
     for (src_bytes..machine_bytes) |i|
@@ -193,7 +196,7 @@ fn add(machine: *Machine) void {
             dst_reg.* += src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
             const src = fetch(memory + src_ref, machine_bytes);
             dst_reg.* += src;
         },
@@ -234,7 +237,7 @@ fn sub(machine: *Machine) void {
             dst_reg.* -= src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
             const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
             dst_reg.* -= src;
         },
@@ -275,7 +278,7 @@ fn mul(machine: *Machine) void {
             dst_reg.* *= src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
             const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
             dst_reg.* *= src;
         },
@@ -316,7 +319,7 @@ fn div(machine: *Machine) void {
             dst_reg.* /= src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
             const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
             dst_reg.* /= src;
         },
@@ -357,7 +360,7 @@ fn and_(machine: *Machine) void {
             dst_reg.* &= src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
             const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
             dst_reg.* &= src;
         },
@@ -398,7 +401,7 @@ fn or_(machine: *Machine) void {
             dst_reg.* |= src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
             const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
             dst_reg.* |= src;
         },
@@ -439,7 +442,7 @@ fn xor(machine: *Machine) void {
             dst_reg.* ^= src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
             const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
             dst_reg.* ^= src;
         },
@@ -481,7 +484,7 @@ fn ldr(machine: *Machine) void {
             dst_reg.* = src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
             const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
             dst_reg.* = src;
         },
@@ -521,7 +524,7 @@ fn ldm(machine: *Machine) void {
             copy(memory + dst_ref, memory + src_ref, machine_bytes);
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
             copy(memory + dst_ref, memory + src_ref, machine_bytes);
         },
         else => {
@@ -553,7 +556,7 @@ fn shl_(machine: *Machine) void {
             dst_reg.* = dst_reg.* << @as(u5, @intCast(src));
         },
         Ext.reg => {
-            const src = getReg(cpu, memory[ip + 2]);
+            const src = (getReg(cpu, memory[ip + 2])).*;
             dst_reg.* = dst_reg.* << @as(u5, @intCast(src));
         },
         else => {
@@ -593,7 +596,7 @@ fn jmp(machine: *Machine) void {
 
     switch (ext) {
         Ext.imm => {
-            const dst_loc_rel: u8 = fetch(memory + ip + 2, 1);
+            const dst_loc_rel: u32 = fetch(memory + ip + 2, 1);
             if (dst_loc_rel >> 31 == 0b1) {
                 dst_loc = cpu.ip + opc_sz - ((dst_loc_rel << 1) >> 1);
             } else {
@@ -620,7 +623,7 @@ fn jg(machine: *Machine) void {
     if ((cpu.flag & 0b00) == 0b00) {
         switch (ext) {
             Ext.imm => {
-                const dst_loc_rel: u8 = fetch(memory + ip + 2, 1);
+                const dst_loc_rel: u32 = fetch(memory + ip + 2, 1);
                 if (dst_loc_rel >> 31 == 0b1) {
                     dst_loc = cpu.ip + opc_sz - ((dst_loc_rel << 1) >> 1);
                 } else {
@@ -650,7 +653,7 @@ fn jz(machine: *Machine) void {
     if ((cpu.flag & 0b01) == 0b01) {
         switch (ext) {
             Ext.imm => {
-                const dst_loc_rel: u8 = fetch(memory + ip + 2, 1);
+                const dst_loc_rel: u32 = fetch(memory + ip + 2, 1);
                 if (dst_loc_rel >> 31 == 0b1) {
                     dst_loc = cpu.ip + opc_sz - ((dst_loc_rel << 1) >> 1);
                 } else {
@@ -680,7 +683,7 @@ fn jl(machine: *Machine) void {
     if ((cpu.flag & 0b10) == 0b10) {
         switch (ext) {
             Ext.imm => {
-                const dst_loc_rel: u8 = fetch(memory + ip + 2, 1);
+                const dst_loc_rel: u32 = fetch(memory + ip + 2, 1);
                 if (dst_loc_rel >> 31 == 0b1) {
                     dst_loc = cpu.ip + opc_sz - ((dst_loc_rel << 1) >> 1);
                 } else {
