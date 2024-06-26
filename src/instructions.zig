@@ -393,6 +393,7 @@ const Instruction = struct {
     }
 
     fn cmp(self: *Instruction) void {
+        self.ip_ofs += self.imm_bytes;
         defer {
             self.cpu.ip += self.ip_ofs;
         }
