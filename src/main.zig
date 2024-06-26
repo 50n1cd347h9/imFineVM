@@ -22,13 +22,14 @@ pub fn main() !void {
     const memory: [*]u8 = machine.memory;
 
     const executable = try std.fs.cwd().openFile(
-        "./src/exe_.bin",
+        "./src/executable/add.bin",
         .{ .mode = .read_only },
     );
     defer executable.close();
     const length: usize = executable.readAll(memory[0..MEMORY_SIZE]) catch unreachable;
 
-    print("{!}\n", .{machine});
+    print("{!}\n\n", .{machine});
+
     const start = try Instant.now();
     while (true) {
         const opcode: u8 = memory[cpu.ip] >> 2;
@@ -36,7 +37,9 @@ pub fn main() !void {
         if (cpu.ip >= @as(ByteWidth, @intCast(length))) break;
     }
     const end = try Instant.now();
+
     print("{!}\n", .{machine});
+    print("memory\n{p} = {any}\n", .{ &memory[cpu.sp], memory[cpu.sp .. cpu.sp + 0x10] });
 
     const elapsed: f64 = @floatFromInt(end.since(start));
     print("Time elapsed is: {d:.3}ms\n", .{elapsed / time.ns_per_ms});
