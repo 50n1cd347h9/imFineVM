@@ -10,6 +10,7 @@ const ByteWidth = machine_config.ByteWidth;
 const SignedByteWidth = machine_config.SignedByteWidth;
 const InsCode = machine_config.InsCode;
 const MEMORY_SIZE = machine_config.MEMORY_SIZE;
+const Ext = machine_config.Ext;
 const Machine: type = machine_.Machine;
 const RegIdx: type = machine_.RegIdx;
 const Cpu: type = machine_.Cpu;
@@ -50,10 +51,10 @@ fn getReg(cpu: *Machine.cpu, reg: u8) Reg {
         @intFromEnum(RegIdx.ip) => return &cpu.ip,
         @intFromEnum(RegIdx.sp) => return &cpu.sp,
         @intFromEnum(RegIdx.fp) => return &cpu.fp,
+        @intFromEnum(RegIdx.flag) => return &cpu.flag,
         @intFromEnum(RegIdx.gr0) => return &cpu.gr0,
         @intFromEnum(RegIdx.gr1) => return &cpu.gr1,
-        @intFromEnum(RegIdx.flag) => return &cpu.flag,
-        else => return &cpu.flag,
+        else => return &cpu.gr0,
     }
 }
 
@@ -85,18 +86,6 @@ fn write(mem_ref: [*]u8, value: anytype, src_bytes: u8) void {
         mem_ref[i] = 0x00;
 }
 
-fn ldr(machine: *Machine) void {
-    ldr32(machine);
-}
-
-fn ldm(machine: *Machine) void {
-    ldm32(machine);
-}
-
-fn shl_(machine: *Machine) void {
-    shl32(machine);
-}
-
 fn push(machine: *Machine) void {
     var ip_ofs: u8 = 2;
     const cpu: *Cpu = &machine.cpu;
@@ -105,13 +94,13 @@ fn push(machine: *Machine) void {
         cpu.sp -= machine_bytes;
     }
     const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
+    const ip: ByteWidth = cpu.ip;
     const sp: ByteWidth = cpu.sp;
     const ext: u8 = memory[ip] & ext_msk;
     const len: u8 = memory[ip + 1] >> 5;
     const bytes: u8 = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
 
-    ip_ofs +=  bytes;
+    ip_ofs += bytes;
 
     switch (ext) {
         Ext.imm => {
@@ -144,13 +133,13 @@ fn pop(machine: *Machine) void {
         cpu.sp += machine_bytes;
     }
     const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
+    const ip: ByteWidth = cpu.ip;
     const sp: ByteWidth = cpu.sp;
     const ext: u8 = memory[ip] & ext_msk;
     const len: u8 = memory[ip + 1] >> 5;
     const bytes: u8 = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
 
-    ip_ofs +=  bytes;
+    ip_ofs += bytes;
 
     switch (ext) {
         Ext.reg => {
@@ -180,14 +169,14 @@ fn add(machine: *Machine) void {
         cpu.ip += ip_ofs;
     }
     const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
+    const ip: ByteWidth = cpu.ip;
     const ext: u8 = memory[ip] & ext_msk;
     const len: u8 = memory[ip + 1] >> 5;
     const reg: u8 = memory[ip + 1] << 3 >> 5;
     const bytes: u8 = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
 
     const dst_reg: Reg = getReg(cpu, reg);
-    ip_ofs +=  bytes;
+    ip_ofs += bytes;
 
     switch (ext) {
         Ext.imm => {
@@ -204,7 +193,7 @@ fn add(machine: *Machine) void {
             dst_reg.* += src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu. memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
             const src = fetch(memory + src_ref, machine_bytes);
             dst_reg.* += src;
         },
@@ -221,14 +210,14 @@ fn sub(machine: *Machine) void {
         cpu.ip += ip_ofs;
     }
     const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
+    const ip: ByteWidth = cpu.ip;
     const ext: u8 = memory[ip] & ext_msk;
     const len: u8 = memory[ip + 1] >> 5;
     const reg: u8 = memory[ip + 1] << 3 >> 5;
     const bytes: u8 = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
 
     const dst_reg: Reg = getReg(cpu, reg);
-    ip_ofs +=  bytes;
+    ip_ofs += bytes;
 
     switch (ext) {
         Ext.imm => {
@@ -245,7 +234,7 @@ fn sub(machine: *Machine) void {
             dst_reg.* -= src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu. memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
             const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
             dst_reg.* -= src;
         },
@@ -262,14 +251,14 @@ fn mul(machine: *Machine) void {
         cpu.ip += ip_ofs;
     }
     const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
+    const ip: ByteWidth = cpu.ip;
     const ext: u8 = memory[ip] & ext_msk;
     const len: u8 = memory[ip + 1] >> 5;
     const reg: u8 = memory[ip + 1] << 3 >> 5;
     const bytes: u8 = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
 
     const dst_reg: Reg = getReg(cpu, reg);
-    ip_ofs +=  bytes;
+    ip_ofs += bytes;
 
     switch (ext) {
         Ext.imm => {
@@ -286,7 +275,7 @@ fn mul(machine: *Machine) void {
             dst_reg.* *= src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu. memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
             const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
             dst_reg.* *= src;
         },
@@ -303,14 +292,14 @@ fn div(machine: *Machine) void {
         cpu.ip += ip_ofs;
     }
     const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
+    const ip: ByteWidth = cpu.ip;
     const ext: u8 = memory[ip] & ext_msk;
     const len: u8 = memory[ip + 1] >> 5;
     const reg: u8 = memory[ip + 1] << 3 >> 5;
     const bytes: u8 = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
 
     const dst_reg: Reg = getReg(cpu, reg);
-    ip_ofs +=  bytes;
+    ip_ofs += bytes;
 
     switch (ext) {
         Ext.imm => {
@@ -327,7 +316,7 @@ fn div(machine: *Machine) void {
             dst_reg.* /= src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu. memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
             const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
             dst_reg.* /= src;
         },
@@ -344,14 +333,14 @@ fn and_(machine: *Machine) void {
         cpu.ip += ip_ofs;
     }
     const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
+    const ip: ByteWidth = cpu.ip;
     const ext: u8 = memory[ip] & ext_msk;
     const len: u8 = memory[ip + 1] >> 5;
     const reg: u8 = memory[ip + 1] << 3 >> 5;
     const bytes: u8 = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
 
     const dst_reg: Reg = getReg(cpu, reg);
-    ip_ofs +=  bytes;
+    ip_ofs += bytes;
 
     switch (ext) {
         Ext.imm => {
@@ -368,7 +357,7 @@ fn and_(machine: *Machine) void {
             dst_reg.* &= src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu. memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
             const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
             dst_reg.* &= src;
         },
@@ -385,14 +374,14 @@ fn or_(machine: *Machine) void {
         cpu.ip += ip_ofs;
     }
     const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
+    const ip: ByteWidth = cpu.ip;
     const ext: u8 = memory[ip] & ext_msk;
     const len: u8 = memory[ip + 1] >> 5;
     const reg: u8 = memory[ip + 1] << 3 >> 5;
     const bytes: u8 = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
 
     const dst_reg: Reg = getReg(cpu, reg);
-    ip_ofs +=  bytes;
+    ip_ofs += bytes;
 
     switch (ext) {
         Ext.imm => {
@@ -409,7 +398,7 @@ fn or_(machine: *Machine) void {
             dst_reg.* |= src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu. memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
             const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
             dst_reg.* |= src;
         },
@@ -426,14 +415,14 @@ fn xor(machine: *Machine) void {
         cpu.ip += ip_ofs;
     }
     const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
+    const ip: ByteWidth = cpu.ip;
     const ext: u8 = memory[ip] & ext_msk;
     const len: u8 = memory[ip + 1] >> 5;
     const reg: u8 = memory[ip + 1] << 3 >> 5;
     const bytes: u8 = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
 
     const dst_reg: Reg = getReg(cpu, reg);
-    ip_ofs +=  bytes;
+    ip_ofs += bytes;
 
     switch (ext) {
         Ext.imm => {
@@ -450,7 +439,7 @@ fn xor(machine: *Machine) void {
             dst_reg.* ^= src;
         },
         Ext.reg_ref => {
-            const src_ref: Ref = (getReg(cpu. memory[ip + 2])).*;
+            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
             const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
             dst_reg.* ^= src;
         },
@@ -461,32 +450,40 @@ fn xor(machine: *Machine) void {
 }
 
 // load to register
-fn ldr32(machine: *Machine) void {
-    var ip_ofs: u8 = opc_sz;
+fn ldr(machine: *Machine) void {
+    var ip_ofs: u8 = 2;
     const cpu: *Cpu = &machine.cpu;
     defer {
         cpu.ip += ip_ofs;
     }
     const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst_reg: Reg = getReg(machine, 1);
+    const ip: ByteWidth = cpu.ip;
+    const ext: u8 = memory[ip] & ext_msk;
+    const len: u8 = memory[ip + 1] >> 5;
+    const reg: u8 = memory[ip + 1] << 3 >> 5;
+    const bytes: u8 = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
 
-    switch (flg) {
-        flgs.is_reg => {
-            const src_reg: Reg = getReg(machine, 2);
-            dst_reg.* = src_reg.*;
-            ip_ofs += 2;
-        },
-        flgs.is_imm => {
-            const src: Imm16 = fetch16(memory + ip + 2);
+    const dst_reg: Reg = getReg(cpu, reg);
+    ip_ofs += bytes;
+
+    switch (ext) {
+        Ext.imm => {
+            const src = fetch(memory + ip + 2, bytes);
             dst_reg.* = src;
-            ip_ofs += 3;
         },
-        flgs.is_ref => {
-            const src_ref: Ref = fetch16(memory + ip + 2);
-            dst_reg.* = fetch32(memory + src_ref);
-            ip_ofs += 3;
+        Ext.reg => {
+            const src_reg: Reg = getReg(cpu, memory[ip + 2]);
+            dst_reg.* = src_reg.*;
+        },
+        Ext.imm_ref => {
+            const src_ref: Ref = fetch(memory + ip + 2, bytes);
+            const src = fetch(memory + src_ref, len);
+            dst_reg.* = src;
+        },
+        Ext.reg_ref => {
+            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
+            const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
+            dst_reg.* = src;
         },
         else => {
             return;
@@ -495,35 +492,37 @@ fn ldr32(machine: *Machine) void {
 }
 
 // load to memory pointed by register
-fn ldm32(machine: *Machine) void {
-    var ip_ofs: u8 = opc_sz;
+fn ldm(machine: *Machine) void {
+    var ip_ofs: u8 = 2;
     const cpu: *Cpu = &machine.cpu;
     defer {
         cpu.ip += ip_ofs;
     }
     const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst_reg: Reg = getReg(machine, 1);
+    const ip: ByteWidth = cpu.ip;
+    const ext: u8 = memory[ip] & ext_msk;
+    const len: u8 = memory[ip + 1] >> 5;
+    const reg: u8 = memory[ip + 1] << 3 >> 5;
+    const bytes: u8 = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
 
-    switch (flg) {
-        flgs.is_reg => {
-            const src_reg: Reg = getReg(machine, 2);
-            const dst_ref: Ref = fetch32(memory + dst_reg.*);
-            write32(memory + dst_ref, src_reg.*);
-            ip_ofs += 2;
+    const dst_ref: Ref = (getReg(cpu, reg)).*;
+    ip_ofs += bytes;
+
+    switch (ext) {
+        Ext.imm => {
+            copy(memory + dst_ref, memory + ip + 2, bytes);
         },
-        flgs.is_imm => {
-            const src: Imm16 = fetch16(memory + ip + 2);
-            const dst_ref: Ref = fetch32(memory + dst_reg.*);
-            write32(memory + dst_ref, src);
-            ip_ofs += 3;
+        Ext.reg => {
+            const src_reg: Reg = getReg(cpu, memory[ip + 2]);
+            write(memory + dst_ref, src_reg.*, machine_bytes);
         },
-        flgs.is_ref => {
-            const src_ref: Ref = fetch16(memory + ip + 2);
-            const dst_ref: Ref = fetch32(memory + dst_reg.*);
-            copy32(memory + dst_ref, memory + src_ref);
-            ip_ofs += 3;
+        Ext.imm_ref => {
+            const src_ref: Ref = fetch(memory + ip + 2, bytes);
+            copy(memory + dst_ref, memory + src_ref, machine_bytes);
+        },
+        Ext.reg_ref => {
+            const src_ref: Ref = (getReg(cpu.memory[ip + 2])).*;
+            copy(memory + dst_ref, memory + src_ref, machine_bytes);
         },
         else => {
             return;
@@ -531,22 +530,31 @@ fn ldm32(machine: *Machine) void {
     }
 }
 
-fn shl32(machine: *Machine) void {
-    var ip_ofs: u8 = opc_sz;
+fn shl_(machine: *Machine) void {
+    var ip_ofs: u8 = 2;
     const cpu: *Cpu = &machine.cpu;
     defer {
         cpu.ip += ip_ofs;
     }
     const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst_reg: Reg = getReg(machine, 1);
+    const ip: ByteWidth = cpu.ip;
+    const ext: u8 = memory[ip] & ext_msk;
+    const len: u8 = memory[ip + 1] >> 5;
+    const reg: u8 = memory[ip + 1] << 3 >> 5;
+    const bytes: u8 = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
 
-    switch (flg) {
-        flgs.is_imm => {
-            const src: Imm8 = memory[ip + 2];
+    const dst_reg: Reg = getReg(cpu, reg);
+    ip_ofs += bytes;
+
+    switch (ext) {
+        Ext.imm => {
+            // src bytes is always 1.
+            const src = fetch(memory + ip + 2, 1);
             dst_reg.* = dst_reg.* << @as(u5, @intCast(src));
-            ip_ofs += 2;
+        },
+        Ext.reg => {
+            const src = getReg(cpu, memory[ip + 2]);
+            dst_reg.* = dst_reg.* << @as(u5, @intCast(src));
         },
         else => {
             return;
@@ -581,22 +589,20 @@ fn jmp(machine: *Machine) void {
     }
     const memory: [*]u8 = machine.memory;
     const ip: ByteWidth = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const gr0: ByteWidth = cpu.gr0;
+    const ext: u8 = memory[ip] & ext_msk;
 
-    switch (flg) {
-        flgs.is_rel => {
-            // if gr0 minus
-            if (gr0 >> 31 == 0b1) {
-                dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
+    switch (ext) {
+        Ext.imm => {
+            const dst_loc_rel: u8 = fetch(memory + ip + 2, 1);
+            if (dst_loc_rel >> 31 == 0b1) {
+                dst_loc = cpu.ip + opc_sz - ((dst_loc_rel << 1) >> 1);
             } else {
-                dst_loc = cpu.ip + opc_sz + gr0;
+                dst_loc = cpu.ip + opc_sz + dst_loc_rel;
             }
         },
-        flgs.is_abs => {
-            dst_loc = gr0;
+        else => {
+            return;
         },
-        else => print("unrecognized flag\n", .{}),
     }
 }
 
@@ -609,30 +615,28 @@ fn jg(machine: *Machine) void {
     }
     const memory: [*]u8 = machine.memory;
     const ip: ByteWidth = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const gr0: ByteWidth = cpu.gr0;
+    const ext: u8 = memory[ip] & ext_msk;
 
     if ((cpu.flag & 0b00) == 0b00) {
-        switch (flg) {
-            flgs.is_rel => {
-                // if gr0 minus
-                if (gr0 >> 31 == 0b1) {
-                    dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
+        switch (ext) {
+            Ext.imm => {
+                const dst_loc_rel: u8 = fetch(memory + ip + 2, 1);
+                if (dst_loc_rel >> 31 == 0b1) {
+                    dst_loc = cpu.ip + opc_sz - ((dst_loc_rel << 1) >> 1);
                 } else {
-                    dst_loc = cpu.ip + opc_sz + gr0;
+                    dst_loc = cpu.ip + opc_sz + dst_loc_rel;
                 }
             },
-            flgs.is_abs => {
-                dst_loc = gr0;
+            else => {
+                return;
             },
-            else => print("unrecognized flag\n", .{}),
         }
     } else {
         dst_loc += cpu.ip + opc_sz;
     }
 }
 
-// jump if equal
+// jump if zero
 fn jz(machine: *Machine) void {
     var dst_loc: ByteWidth = 0;
     const cpu: *Cpu = &machine.cpu;
@@ -641,29 +645,28 @@ fn jz(machine: *Machine) void {
     }
     const memory: [*]u8 = machine.memory;
     const ip: ByteWidth = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const gr0: ByteWidth = cpu.gr0;
+    const ext: u8 = memory[ip] & ext_msk;
 
-    if ((cpu.flag & 0b10) == 0b10) {
-        switch (flg) {
-            flgs.is_rel => {
-                // if gr0 minus
-                if (gr0 >> 31 == 0b1) {
-                    dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
+    if ((cpu.flag & 0b01) == 0b01) {
+        switch (ext) {
+            Ext.imm => {
+                const dst_loc_rel: u8 = fetch(memory + ip + 2, 1);
+                if (dst_loc_rel >> 31 == 0b1) {
+                    dst_loc = cpu.ip + opc_sz - ((dst_loc_rel << 1) >> 1);
                 } else {
-                    dst_loc = cpu.ip + opc_sz + gr0;
+                    dst_loc = cpu.ip + opc_sz + dst_loc_rel;
                 }
             },
-            flgs.is_abs => {
-                dst_loc = gr0;
+            else => {
+                return;
             },
-            else => print("unrecognized flag\n", .{}),
         }
     } else {
         dst_loc += cpu.ip + opc_sz;
     }
 }
 
+// jump if zero
 fn jl(machine: *Machine) void {
     var dst_loc: ByteWidth = 0;
     const cpu: *Cpu = &machine.cpu;
@@ -672,23 +675,21 @@ fn jl(machine: *Machine) void {
     }
     const memory: [*]u8 = machine.memory;
     const ip: ByteWidth = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const gr0: ByteWidth = cpu.gr0;
+    const ext: u8 = memory[ip] & ext_msk;
 
-    if ((cpu.flag & 0b00) == 0b00) {
-        switch (flg) {
-            flgs.is_rel => {
-                // if gr0 signed
-                if (gr0 >> 31 == 0b1) {
-                    dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
+    if ((cpu.flag & 0b10) == 0b10) {
+        switch (ext) {
+            Ext.imm => {
+                const dst_loc_rel: u8 = fetch(memory + ip + 2, 1);
+                if (dst_loc_rel >> 31 == 0b1) {
+                    dst_loc = cpu.ip + opc_sz - ((dst_loc_rel << 1) >> 1);
                 } else {
-                    dst_loc = cpu.ip + opc_sz + gr0;
+                    dst_loc = cpu.ip + opc_sz + dst_loc_rel;
                 }
             },
-            flgs.is_abs => {
-                dst_loc = gr0;
+            else => {
+                return;
             },
-            else => print("unrecognized flag\n", .{}),
         }
     } else {
         dst_loc += cpu.ip + opc_sz;
