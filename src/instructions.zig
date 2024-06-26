@@ -23,7 +23,7 @@ const Imm8: type = machine_config.Imm8;
 const Ref: type = machine_config.Ref;
 const Reg: type = machine_config.Reg;
 const ext_msk: u8 = 0b00000011;
-const machine_bytes: u8 = @sizeOf(ByteWidth) / 8;
+const machine_bytes: u8 = @sizeOf(ByteWidth);
 
 var instruction: [@intFromEnum(InsCode.count)]*const fn (*Machine) void = undefined; // array of pointer to instruction
 
@@ -78,11 +78,11 @@ fn copy(dst: [*]u8, src: [*]u8, src_bytes: u8) void {
         dst[i] = 0x00;
 }
 
-fn write(mem_ref: [*]u8, value: anytype, src_bytes: u8) void {
+fn write(mem_ref: [*]u8, value: ByteWidth, src_bytes: u8) void {
+    const mask: ByteWidth = 0xff;
     for (0..src_bytes) |i| {
         const ofs: u5 = @intCast(i);
-        const tmp = shr(ByteWidth, value, src_bytes - (ofs + 1));
-        const byte = shl(ByteWidth, tmp, src_bytes - 1);
+        const byte = shr(ByteWidth, value, ofs * 8) & mask;
         mem_ref[i] = @as(u8, @intCast(byte));
     }
     for (src_bytes..machine_bytes) |i|
