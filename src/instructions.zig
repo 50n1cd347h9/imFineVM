@@ -41,8 +41,8 @@ pub fn initInstructions() []*const fn (*Machine) void {
     instruction[@intFromEnum(InsCode.or_)] = or_;
     instruction[@intFromEnum(InsCode.xor)] = xor;
     instruction[@intFromEnum(InsCode.shl_)] = shl_;
-    instruction[@intFromEnum(InsCode.ldr)] = ldr;
-    instruction[@intFromEnum(InsCode.ldm)] = ldm;
+    instruction[@intFromEnum(InsCode.ldr)] = ld;
+    instruction[@intFromEnum(InsCode.ldm)] = ld;
     instruction[@intFromEnum(InsCode.cmp)] = cmp;
     instruction[@intFromEnum(InsCode.jmp)] = jmp;
     instruction[@intFromEnum(InsCode.jz)] = jz;
@@ -177,6 +177,7 @@ const Instruction = struct {
             },
         }
     }
+
     fn add(self: *Instruction) void {
         defer {
             self.cpu.ip += self.ip_ofs;
@@ -190,6 +191,7 @@ const Instruction = struct {
             }
         }.execute);
     }
+
     fn sub(self: *Instruction) void {
         defer {
             self.cpu.ip += self.ip_ofs;
@@ -201,6 +203,7 @@ const Instruction = struct {
             }
         }.execute);
     }
+
     fn mul(self: *Instruction) void {
         defer {
             self.cpu.ip += self.ip_ofs;
@@ -212,6 +215,7 @@ const Instruction = struct {
             }
         }.execute);
     }
+
     fn div(self: *Instruction) void {
         defer {
             self.cpu.ip += self.ip_ofs;
@@ -230,34 +234,58 @@ const Instruction = struct {
         }
         _ = self.arithmetic_switching(struct {
             fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
-                dst_reg.* /= src;
+                dst_reg.* &= src;
                 return 0;
             }
         }.execute);
     }
+
     fn or_(self: *Instruction) void {
         defer {
             self.cpu.ip += self.ip_ofs;
         }
         _ = self.arithmetic_switching(struct {
             fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
-                dst_reg.* /= src;
+                dst_reg.* |= src;
                 return 0;
             }
         }.execute);
     }
+
     fn xor(self: *Instruction) void {
         defer {
             self.cpu.ip += self.ip_ofs;
         }
         _ = self.arithmetic_switching(struct {
             fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
-                dst_reg.* /= src;
+                dst_reg.* ^= src;
                 return 0;
             }
         }.execute);
     }
 
+    fn shl_(self: *Instruction) void {
+        self.ip_ofs += self.imm_bytes;
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
+        _ = self.arithmetic_switching(struct {
+            fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                dst_reg.* = dst_reg.* << @as(u5, @intCast(src));
+                return 0;
+            }
+        }.execute);
+    }
+
+    fn ld(self: *Instruction) void {
+        if (self.ip >> 2 == @intFromEnum(InsCode.ldr)) {
+            self.ldr();
+        } else {
+            self.ldm();
+        }
+    }
+
+    // load to register
     fn ldr(self: *Instruction) void {
         self.ip_ofs += self.imm_bytes;
         defer {
@@ -293,6 +321,7 @@ const Instruction = struct {
         }
     }
 
+    // load to memory pointed by register
     fn ldm(self: *Instruction) void {
         self.ip_ofs += self.imm_bytes;
         defer {
@@ -319,28 +348,6 @@ const Instruction = struct {
             Ext.reg_ref => {
                 const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
                 copy(memory + dst_ref, memory + src_ref, machine_bytes);
-            },
-            else => {
-                return;
-            },
-        }
-    }
-
-    fn shl_(self: *Instruction) void {
-        self.ip_ofs += self.imm_bytes;
-        defer {
-            self.cpu.ip += self.ip_ofs;
-        }
-        const dst_reg: Reg = self.first_reg;
-        switch (self.ext) {
-            Ext.imm => {
-                // src bytes is always 1.
-                const src = fetch(self.memory + self.ip + 2, 1);
-                dst_reg.* = dst_reg.* << @as(u5, @intCast(src));
-            },
-            Ext.reg => {
-                const src = (getReg(self.cpu, self.memory[self.ip + 2])).*;
-                dst_reg.* = dst_reg.* << @as(u5, @intCast(src));
             },
             else => {
                 return;
@@ -480,18 +487,10 @@ fn xor(machine: *Machine) void {
     ins.xor();
 }
 
-// load to register
-fn ldr(machine: *Machine) void {
+fn ld(machine: *Machine) void {
     var ins: Instruction = undefined;
     ins.init(machine);
-    ins.ldr();
-}
-
-// load to memory pointed by register
-fn ldm(machine: *Machine) void {
-    var ins: Instruction = undefined;
-    ins.init(machine);
-    ins.ldm();
+    ins.ld();
 }
 
 fn shl_(machine: *Machine) void {
