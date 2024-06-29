@@ -265,7 +265,6 @@ const Instruction = struct {
     }
 
     fn shl_(self: *Instruction) void {
-        self.ip_ofs += self.imm_bytes;
         defer {
             self.cpu.ip += self.ip_ofs;
         }
@@ -275,6 +274,26 @@ const Instruction = struct {
                 return 0;
             }
         }.execute);
+    }
+
+    fn cmp(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
+        var flag = self.arithmetic_switching(struct {
+            fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                const dst: ByteWidth = dst_reg.*;
+                if (dst > src) {
+                    return 0b00;
+                } else if (dst == src) {
+                    return 0b01;
+                } else {
+                    return 0b10;
+                }
+            }
+        }.execute);
+        flag = @as(u8, @intCast(flag));
+        self.cpu.flag &= flag;
     }
 
     fn ld(self: *Instruction) void {
@@ -396,35 +415,6 @@ const Instruction = struct {
             dst_loc = self.jump_switching();
         } else {
             dst_loc += self.cpu.ip + opc_sz;
-        }
-    }
-
-    fn cmp(self: *Instruction) void {
-        self.ip_ofs += self.imm_bytes;
-        defer {
-            self.cpu.ip += self.ip_ofs;
-        }
-        const dst = (self.first_reg).*;
-        var src: ByteWidth = 0;
-        switch (self.ext) {
-            Ext.imm => src = fetch(self.memory + self.ip + 2, self.imm_bytes),
-            Ext.reg => src = (getReg(self.cpu, self.memory[self.ip + 2])).*,
-            Ext.imm_ref => {
-                const src_ref: Ref = fetch(self.memory + self.ip + 2, machine_bytes);
-                src = fetch(self.memory + src_ref, machine_bytes);
-            },
-            Ext.reg_ref => {
-                const src_ref: Ref = (getReg(self.cpu, self.memory[self.ip + 2])).*;
-                src = fetch(self.memory + src_ref, machine_bytes);
-            },
-            else => unreachable,
-        }
-        if (dst > src) {
-            self.cpu.flag &= 0b00;
-        } else if (dst == src) {
-            self.cpu.flag &= 0b01;
-        } else {
-            self.cpu.flag &= 0b10;
         }
     }
 
