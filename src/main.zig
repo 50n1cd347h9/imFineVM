@@ -22,7 +22,7 @@ pub fn main() !void {
     const memory: [*]u8 = machine.memory;
 
     const executable = try std.fs.cwd().openFile(
-        "./src/executable/exe_.bin",
+        "./src/executable/test.bin",
         .{ .mode = .read_only },
     );
     defer executable.close();
@@ -34,6 +34,7 @@ pub fn main() !void {
     const start = try Instant.now();
     while (true) {
         const opcode: u8 = memory[cpu.ip] >> 2;
+        print("opcode {x}\n", .{opcode});
         prev_ip = cpu.ip;
         instruction[opcode](&machine);
         //if (cpu.ip == prev_ip) break;

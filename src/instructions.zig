@@ -297,7 +297,7 @@ const Instruction = struct {
     }
 
     fn ld(self: *Instruction) void {
-        if (self.ip >> 2 == @intFromEnum(InsCode.ldr)) {
+        if (self.memory[self.ip] >> 2 == @intFromEnum(InsCode.ldr)) {
             self.ldr();
         } else {
             self.ldm();
