@@ -277,10 +277,12 @@ const Instruction = struct {
     }
 
     fn cmp(self: *Instruction) void {
+        var flag: ByteWidth = 0b00;
         defer {
             self.cpu.ip += self.ip_ofs;
+            self.cpu.flag &= @as(u8, @intCast(flag));
         }
-        var flag = self.arithmetic_switching(struct {
+        flag = self.arithmetic_switching(struct {
             fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
                 const dst: ByteWidth = dst_reg.*;
                 if (dst > src) {
@@ -292,8 +294,6 @@ const Instruction = struct {
                 }
             }
         }.execute);
-        flag = @as(u8, @intCast(flag));
-        self.cpu.flag &= flag;
     }
 
     fn ld(self: *Instruction) void {
@@ -477,12 +477,6 @@ fn xor(machine: *Machine) void {
     ins.xor();
 }
 
-fn ld(machine: *Machine) void {
-    var ins: Instruction = undefined;
-    ins.init(machine);
-    ins.ld();
-}
-
 fn shl_(machine: *Machine) void {
     var ins: Instruction = undefined;
     ins.init(machine);
@@ -493,6 +487,12 @@ fn cmp(machine: *Machine) void {
     var ins: Instruction = undefined;
     ins.init(machine);
     ins.cmp();
+}
+
+fn ld(machine: *Machine) void {
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.ld();
 }
 
 fn jmp(machine: *Machine) void {
