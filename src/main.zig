@@ -22,26 +22,28 @@ pub fn main() !void {
     const memory: [*]u8 = machine.memory;
 
     const executable = try std.fs.cwd().openFile(
-        "./src/exe_.bin",
+        "./src/executable/test.bin",
         .{ .mode = .read_only },
     );
     defer executable.close();
     const length: usize = executable.readAll(memory[0..MEMORY_SIZE]) catch unreachable;
+    //_ = length;
+    print("{!}\n\n", .{machine});
 
+    var prev_ip: ByteWidth = 0;
     const start = try Instant.now();
     while (true) {
-        const opcode: u8 = memory[cpu.ip] >> 3;
-
-        //print("opcode = {x}\n", .{opcode});
+        const opcode: u8 = memory[cpu.ip] >> 2;
+        prev_ip = cpu.ip;
         instruction[opcode](&machine);
-        //print("cpu = {!}\n\n", .{cpu});
-
+        //if (cpu.ip == prev_ip) break;
         if (cpu.ip >= @as(ByteWidth, @intCast(length))) break;
     }
+    const end = try Instant.now();
 
     print("{!}\n", .{machine});
+    print("memory\n{p} = {any}\n", .{ &memory[cpu.sp], memory[cpu.sp .. cpu.sp + 0x10] });
 
-    const end = try Instant.now();
     const elapsed: f64 = @floatFromInt(end.since(start));
     print("Time elapsed is: {d:.3}ms\n", .{elapsed / time.ns_per_ms});
 }

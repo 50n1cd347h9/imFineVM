@@ -1,15 +1,23 @@
 const std = @import("std");
-const print = std.debug.print;
-const shl = std.math.shl;
-const shr = std.math.shr;
 const machine_ = @import("./machine.zig");
 const machine_config = @import("./machine_config.zig");
+const sub_instructions = @import("./sub_instructions.zig");
+const builtin = std.builtin;
+const print = std.debug.print;
+const pow = std.math.pow;
+const write = sub_instructions.write;
+const shr = std.math.shr;
+const getReg = sub_instructions.getReg;
+const fetch = sub_instructions.fetch;
+const copy = sub_instructions.copy;
 
 const opr_sz = machine_config.opr_sz;
 const opc_sz = machine_config.opc_sz;
 const ByteWidth = machine_config.ByteWidth;
 const SignedByteWidth = machine_config.SignedByteWidth;
+const InsCode = machine_config.InsCode;
 const MEMORY_SIZE = machine_config.MEMORY_SIZE;
+const Ext = machine_config.Ext;
 const Machine: type = machine_.Machine;
 const RegIdx: type = machine_.RegIdx;
 const Cpu: type = machine_.Cpu;
@@ -18,16 +26,10 @@ const Imm16: type = machine_config.Imm16;
 const Imm8: type = machine_config.Imm8;
 const Ref: type = machine_config.Ref;
 const Reg: type = machine_config.Reg;
-const flgs = struct {
-    const flg_msk: u8 = 0b00000111;
-    const is_reg: u8 = 0b000;
-    const is_imm: u8 = 0b001;
-    const is_ref: u8 = 0b010;
-    const is_rel: u8 = 0b000;
-    const is_abs: u8 = 0b001;
-};
+const ext_msk: u8 = 0b00000011;
+const machine_bytes: u8 = @sizeOf(ByteWidth);
+
 var instruction: [@intFromEnum(InsCode.count)]*const fn (*Machine) void = undefined; // array of pointer to instruction
-const InsCode = enum(usize) { push, pop, add, sub, mul, div, and_, or_, xor, shl_, ldr, ldm, cmp, jmp, jg, jz, jl, nop, count };
 
 pub fn initInstructions() []*const fn (*Machine) void {
     instruction[@intFromEnum(InsCode.push)] = push;
@@ -39,8 +41,8 @@ pub fn initInstructions() []*const fn (*Machine) void {
     instruction[@intFromEnum(InsCode.or_)] = or_;
     instruction[@intFromEnum(InsCode.xor)] = xor;
     instruction[@intFromEnum(InsCode.shl_)] = shl_;
-    instruction[@intFromEnum(InsCode.ldr)] = ldr;
-    instruction[@intFromEnum(InsCode.ldm)] = ldm;
+    instruction[@intFromEnum(InsCode.ldr)] = ld;
+    instruction[@intFromEnum(InsCode.ldm)] = ld;
     instruction[@intFromEnum(InsCode.cmp)] = cmp;
     instruction[@intFromEnum(InsCode.jmp)] = jmp;
     instruction[@intFromEnum(InsCode.jz)] = jz;
@@ -51,655 +53,473 @@ pub fn initInstructions() []*const fn (*Machine) void {
     return &instruction;
 }
 
-fn getReg(machine: *Machine, ofs_ip: u8) Reg {
-    const cpu: *Cpu = &machine.cpu;
-    const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const target_byte = memory[ip + ofs_ip];
+const Instruction = struct {
+    ip_ofs: u8,
+    cpu: *Cpu,
+    memory: [*]u8,
+    ip: ByteWidth,
+    sp: ByteWidth,
+    ext: u8,
+    len: u8,
+    reg: u8,
+    imm_bytes: u8,
+    first_reg: Reg,
 
-    switch (target_byte) {
-        @intFromEnum(RegIdx.ip) => return &cpu.ip,
-        @intFromEnum(RegIdx.sp) => return &cpu.sp,
-        @intFromEnum(RegIdx.fp) => return &cpu.fp,
-        @intFromEnum(RegIdx.gr0) => return &cpu.gr0,
-        @intFromEnum(RegIdx.gr1) => return &cpu.gr1,
-        @intFromEnum(RegIdx.flag) => return &cpu.flag,
-        else => return &cpu.flag,
+    fn init(self: *Instruction, machine: *Machine) void {
+        self.ip_ofs = 2;
+        self.cpu = &machine.cpu;
+        self.ip = self.cpu.ip;
+        self.sp = self.cpu.sp;
+        self.memory = machine.memory;
+        self.ext = self.memory[self.ip] & ext_msk;
+        self.len = self.memory[self.ip + 1] >> 5;
+        self.reg = self.memory[self.ip + 1] << 3 >> 5;
+        self.imm_bytes = if (self.len != 0) @divExact(pow(u8, 2, self.len + 2), 8) else 0;
+        self.first_reg = getReg(self.cpu, self.reg);
     }
-}
 
-fn fetch16(mem_ref: [*]u8) u16 {
-    var value: u16 = 0;
-    var tmp: u16 = 0;
-    for ([2]u4{ 0, 1 }) |i| {
-        tmp = @as(u16, @intCast(mem_ref[i])) << (i * 8);
-        value += tmp;
+    fn jump_switching(self: *Instruction) ByteWidth {
+        var dst_loc: ByteWidth = 0;
+        switch (self.ext) {
+            Ext.imm => {
+                const dst_loc_rel: u32 = fetch(self.memory + self.ip + 2, 1);
+                if (dst_loc_rel >> 31 == 0b1) {
+                    dst_loc = self.cpu.ip + opc_sz + 2 - ((dst_loc_rel << 1) >> 1);
+                } else {
+                    dst_loc = self.cpu.ip + opc_sz + 2 + dst_loc_rel;
+                }
+            },
+            else => undefined,
+        }
+        return dst_loc;
     }
-    return value;
-}
 
-fn fetch32(mem_ref: [*]u8) u32 {
-    var value: u32 = 0;
-    var tmp: u32 = 0;
-    for ([4]u5{ 0, 1, 2, 3 }) |i| {
-        tmp = @as(u32, @intCast(mem_ref[i])) << (i * 8);
-        value += tmp;
+    fn arithmetic_switching(self: *Instruction, execute: fn (Reg, ByteWidth) ByteWidth) ByteWidth {
+        const memory: [*]u8 = self.memory;
+        const ip: ByteWidth = self.ip;
+        const imm_bytes: u8 = self.imm_bytes;
+        const dst_reg: Reg = self.first_reg;
+        const cpu: *Cpu = self.cpu;
+        self.ip_ofs += self.imm_bytes;
+        switch (self.ext) {
+            Ext.imm => {
+                const src = fetch(memory + ip + 2, imm_bytes);
+                return execute(dst_reg, src);
+            },
+            Ext.reg => {
+                const src_reg: Reg = getReg(cpu, memory[ip + 2]);
+                return execute(dst_reg, src_reg.*);
+            },
+            Ext.imm_ref => {
+                const src_ref: Ref = fetch(memory + ip + 2, imm_bytes);
+                const src = fetch(memory + src_ref, imm_bytes);
+                return execute(dst_reg, src);
+            },
+            Ext.reg_ref => {
+                const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
+                const src = fetch(memory + src_ref, machine_bytes);
+                return execute(dst_reg, src);
+            },
+            else => unreachable,
+        }
     }
-    return value;
-}
 
-// write u16 value to [0..2]u8
-fn write16(mem_ref: [*]u8, value: u16) void {
-    const mask: u16 = 0x00ff;
-    var byte: u16 = 0;
-    for ([2]u5{ 0, 1 }) |i| {
-        byte = value >> (i * 8) & mask;
-        mem_ref[i] = @as(u8, @intCast(byte));
+    fn pop(self: *Instruction) void {
+        self.ip_ofs += self.imm_bytes;
+        defer {
+            self.cpu.ip += self.ip_ofs;
+            self.cpu.sp += machine_bytes;
+        }
+        switch (self.ext) {
+            Ext.reg => {
+                const dst_reg: Reg = getReg(self.cpu, self.memory[self.ip + 2]);
+                const src = fetch(self.memory + self.sp, machine_bytes);
+                dst_reg.* = src;
+            },
+            Ext.imm_ref => {
+                const dst_ref: Ref = fetch(self.memory + self.ip + 2, self.imm_bytes);
+                copy(self.memory + dst_ref, self.memory + self.sp, machine_bytes);
+            },
+            Ext.reg_ref => {
+                const dst_ref = (getReg(self.cpu, self.memory[self.ip + 2])).*;
+                copy(self.memory + dst_ref, self.memory + self.sp, machine_bytes);
+            },
+            else => {
+                return;
+            },
+        }
     }
-}
 
-// write u32 value to [0..4]u8
-fn write32(mem_ref: [*]u8, value: u32) void {
-    const mask: u32 = 0x000000ff;
-    var byte: u32 = 0;
-    for ([4]u5{ 0, 1, 2, 3 }) |i| {
-        byte = value >> (i * 8) & mask;
-        mem_ref[i] = @as(u8, @intCast(byte));
+    fn push(self: *Instruction) void {
+        self.ip_ofs += self.imm_bytes;
+        defer {
+            self.cpu.ip += self.ip_ofs;
+            self.cpu.sp -= machine_bytes;
+        }
+        switch (self.ext) {
+            Ext.imm => {
+                copy(self.memory + self.sp - machine_bytes, self.memory + self.ip + 2, self.imm_bytes);
+            },
+            Ext.reg => {
+                const src = (getReg(self.cpu, self.memory[self.ip + 2])).*;
+                write(self.memory + self.sp - machine_bytes, src, machine_bytes);
+            },
+            Ext.imm_ref => {
+                const src_ref: Ref = fetch(self.memory + self.ip + 2, machine_bytes);
+                copy(self.memory + self.sp - machine_bytes, self.memory + src_ref, machine_bytes);
+            },
+            Ext.reg_ref => {
+                const src_ref: Ref = (getReg(self.cpu, self.memory[self.ip + 2])).*;
+                copy(self.memory + self.sp - machine_bytes, self.memory + src_ref, machine_bytes);
+            },
+            else => {
+                return;
+            },
+        }
     }
-}
 
-fn copy32(dst: [*]u8, src: [*]u8) void {
-    for (0..4) |i|
-        dst[i] = src[i];
-}
+    fn add(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
+        _ = self.arithmetic_switching(struct {
+            pub const _self = self;
+            fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                dst_reg.* += src;
+                //print("val = {d}\n", .{val});
+                return 0;
+            }
+        }.execute);
+    }
 
-fn copy16(dst: [*]u8, src: [*]u8) void {
-    for (0..2) |i|
-        dst[i] = src[i];
-}
+    fn sub(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
+        _ = self.arithmetic_switching(struct {
+            fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                dst_reg.* -= src;
+                return 0;
+            }
+        }.execute);
+    }
+
+    fn mul(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
+        _ = self.arithmetic_switching(struct {
+            fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                dst_reg.* *= src;
+                return 0;
+            }
+        }.execute);
+    }
+
+    fn div(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
+        _ = self.arithmetic_switching(struct {
+            fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                dst_reg.* /= src;
+                return 0;
+            }
+        }.execute);
+    }
+
+    fn and_(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
+        _ = self.arithmetic_switching(struct {
+            fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                dst_reg.* &= src;
+                return 0;
+            }
+        }.execute);
+    }
+
+    fn or_(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
+        _ = self.arithmetic_switching(struct {
+            fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                dst_reg.* |= src;
+                return 0;
+            }
+        }.execute);
+    }
+
+    fn xor(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
+        _ = self.arithmetic_switching(struct {
+            fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                dst_reg.* ^= src;
+                return 0;
+            }
+        }.execute);
+    }
+
+    fn shl_(self: *Instruction) void {
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
+        _ = self.arithmetic_switching(struct {
+            fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                dst_reg.* = dst_reg.* << @as(u5, @intCast(src));
+                return 0;
+            }
+        }.execute);
+    }
+
+    fn cmp(self: *Instruction) void {
+        var flag: ByteWidth = 0b00;
+        defer {
+            self.cpu.ip += self.ip_ofs;
+            self.cpu.flag &= @as(u8, @intCast(flag));
+        }
+        flag = self.arithmetic_switching(struct {
+            fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                const dst: ByteWidth = dst_reg.*;
+                if (dst > src) {
+                    return 0b00;
+                } else if (dst == src) {
+                    return 0b01;
+                } else {
+                    return 0b10;
+                }
+            }
+        }.execute);
+    }
+
+    fn ld(self: *Instruction) void {
+        if (self.memory[self.ip] >> 2 == @intFromEnum(InsCode.ldr)) {
+            self.ldr();
+        } else {
+            self.ldm();
+        }
+    }
+
+    // load to register
+    fn ldr(self: *Instruction) void {
+        self.ip_ofs += self.imm_bytes;
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
+        const memory: [*]u8 = self.memory;
+        const ip: ByteWidth = self.ip;
+        const imm_bytes: u8 = self.imm_bytes;
+        const dst_reg: Reg = self.first_reg;
+        const cpu: *Cpu = self.cpu;
+        switch (self.ext) {
+            Ext.imm => {
+                const src = fetch(memory + ip + 2, imm_bytes);
+                dst_reg.* = src;
+            },
+            Ext.reg => {
+                const src_reg: Reg = getReg(cpu, memory[ip + 2]);
+                dst_reg.* = src_reg.*;
+            },
+            Ext.imm_ref => {
+                const src_ref: Ref = fetch(memory + ip + 2, imm_bytes);
+                const src = fetch(memory + src_ref, machine_bytes);
+                dst_reg.* = src;
+            },
+            Ext.reg_ref => {
+                const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
+                const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
+                dst_reg.* = src;
+            },
+            else => {
+                return;
+            },
+        }
+    }
+
+    // load to memory pointed by register
+    fn ldm(self: *Instruction) void {
+        self.ip_ofs += self.imm_bytes;
+        defer {
+            self.cpu.ip += self.ip_ofs;
+        }
+        const memory: [*]u8 = self.memory;
+        const ip: ByteWidth = self.ip;
+        const imm_bytes: u8 = self.imm_bytes;
+        const dst_reg: Reg = self.first_reg;
+        const dst_ref: Ref = dst_reg.*;
+        const cpu: *Cpu = self.cpu;
+        switch (self.ext) {
+            Ext.imm => {
+                copy(memory + dst_ref, memory + ip + 2, imm_bytes);
+            },
+            Ext.reg => {
+                const src_reg: Reg = getReg(cpu, memory[ip + 2]);
+                write(memory + dst_ref, src_reg.*, machine_bytes);
+            },
+            Ext.imm_ref => {
+                const src_ref: Ref = fetch(memory + ip + 2, imm_bytes);
+                copy(memory + dst_ref, memory + src_ref, machine_bytes);
+            },
+            Ext.reg_ref => {
+                const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
+                copy(memory + dst_ref, memory + src_ref, machine_bytes);
+            },
+            else => {
+                return;
+            },
+        }
+    }
+
+    fn jmp(self: *Instruction) void {
+        var dst_loc: ByteWidth = 0;
+        defer {
+            self.cpu.ip = dst_loc;
+        }
+        dst_loc = self.jump_switching();
+    }
+
+    fn jg(self: *Instruction) void {
+        var dst_loc: ByteWidth = 0;
+        defer {
+            self.cpu.ip = dst_loc;
+        }
+        if ((self.cpu.flag & 0b00) == 0b00) {
+            dst_loc = self.jump_switching();
+        } else {
+            dst_loc += self.cpu.ip + opc_sz;
+        }
+    }
+
+    fn jz(self: *Instruction) void {
+        var dst_loc: ByteWidth = 0;
+        defer {
+            self.cpu.ip = dst_loc;
+        }
+        if ((self.cpu.flag & 0b01) == 0b01) {
+            dst_loc = self.jump_switching();
+        } else {
+            dst_loc += self.cpu.ip + opc_sz;
+        }
+    }
+
+    fn jl(self: *Instruction) void {
+        var dst_loc: ByteWidth = 0;
+        defer {
+            self.cpu.ip = dst_loc;
+        }
+        if ((self.cpu.flag & 0b10) == 0b10) {
+            dst_loc = self.jump_switching();
+        } else {
+            dst_loc += self.cpu.ip + opc_sz;
+        }
+    }
+
+    fn hoge(self: *Instruction) void {
+        print("ip_ofs = {}\n", .{self.ip_ofs});
+    }
+};
 
 fn push(machine: *Machine) void {
-    push32(machine);
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.push();
 }
 
 fn pop(machine: *Machine) void {
-    pop32(machine);
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.pop();
 }
 
 fn add(machine: *Machine) void {
-    add32(machine);
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.add();
 }
 
 fn sub(machine: *Machine) void {
-    sub32(machine);
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.sub();
 }
 
 fn mul(machine: *Machine) void {
-    mul32(machine);
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.mul();
 }
 
 fn div(machine: *Machine) void {
-    div32(machine);
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.div();
 }
 
 fn and_(machine: *Machine) void {
-    and32(machine);
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.and_();
 }
 
 fn or_(machine: *Machine) void {
-    or32(machine);
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.or_();
 }
 
 fn xor(machine: *Machine) void {
-    xor32(machine);
-}
-
-fn ldr(machine: *Machine) void {
-    ldr32(machine);
-}
-
-fn ldm(machine: *Machine) void {
-    ldm32(machine);
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.xor();
 }
 
 fn shl_(machine: *Machine) void {
-    shl32(machine);
-}
-
-// push 32bit value to stack
-fn push32(machine: *Machine) void {
-    var ip_ofs = opc_sz;
-    const stack_ofs = 4;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.sp -= stack_ofs;
-        cpu.ip += ip_ofs;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: ByteWidth = cpu.ip;
-    const sp: ByteWidth = cpu.sp;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-
-    switch (flg) {
-        flgs.is_reg => {
-            const src: Reg = getReg(machine, 1);
-            write32(memory + sp - 4, src.*);
-            ip_ofs += 1;
-        },
-        flgs.is_imm => {
-            copy16(memory + sp - 2, memory + ip + opc_sz);
-            ip_ofs += 2;
-        },
-        flgs.is_ref => {
-            const src: Ref = fetch16(memory + ip + 1);
-            copy32(memory + sp - 4, memory + src);
-            ip_ofs += 2;
-        },
-        else => {
-            print("push: unrecognized flag: {b}\n", .{flg});
-            return;
-        },
-    }
-}
-
-// TODO: error handling
-fn pop32(machine: *Machine) void {
-    var ip_ofs = opc_sz;
-    const stack_ofs = 4;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.sp += stack_ofs;
-        cpu.ip += ip_ofs;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const sp: u32 = cpu.sp;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-
-    switch (flg) {
-        flgs.is_reg => {
-            const src: Imm32 = fetch32(memory + sp);
-            const dst_reg: Reg = getReg(machine, 1);
-            dst_reg.* = src;
-            ip_ofs += 1;
-        },
-        flgs.is_ref => {
-            const dst_ref: Ref = fetch16(memory + ip + 1);
-            copy32(memory + dst_ref, memory + sp);
-            ip_ofs += 2;
-        },
-        else => {
-            print("pop: unrecognized flag: {b}\n", .{flg});
-            return;
-        },
-    }
-}
-
-// TODO: if overflow
-fn add32(machine: *Machine) void {
-    var ip_ofs: u8 = opc_sz;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip += ip_ofs;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst_reg: Reg = getReg(machine, 1);
-
-    switch (flg) {
-        flgs.is_reg => {
-            const src_reg: Reg = getReg(machine, 2);
-            dst_reg.* += src_reg.*;
-            ip_ofs += 2;
-        },
-        flgs.is_imm => {
-            const src: Imm16 = fetch16(memory + ip + 2);
-            dst_reg.* += src;
-            ip_ofs += 3;
-        },
-        flgs.is_ref => {
-            const src_ref: Ref = fetch16(memory + ip + 2);
-            dst_reg.* += fetch32(memory + src_ref);
-            ip_ofs += 3;
-        },
-        else => {
-            return;
-        },
-    }
-}
-
-fn sub32(machine: *Machine) void {
-    var ip_ofs: u8 = opc_sz;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip += ip_ofs;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst_reg: Reg = getReg(machine, 1);
-
-    switch (flg) {
-        flgs.is_reg => {
-            const src_reg: Reg = getReg(machine, 2);
-            dst_reg.* -= src_reg.*;
-            ip_ofs += 2;
-        },
-        flgs.is_imm => {
-            const src: Imm16 = fetch16(memory + ip + 2);
-            dst_reg.* -= src;
-            ip_ofs += 3;
-        },
-        flgs.is_ref => {
-            const src_ref: Ref = fetch16(memory + ip + 2);
-            dst_reg.* -= fetch32(memory + src_ref);
-            ip_ofs += 3;
-        },
-        else => {
-            return;
-        },
-    }
-}
-
-fn mul32(machine: *Machine) void {
-    var ip_ofs: u8 = opc_sz;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip += ip_ofs;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst_reg: Reg = getReg(machine, 1);
-
-    switch (flg) {
-        flgs.is_reg => {
-            const src: Reg = getReg(machine, 2);
-            dst_reg.* *= src.*;
-            ip_ofs += 2;
-        },
-        flgs.is_imm => {
-            const src: Imm16 = fetch16(memory + ip + 2);
-            dst_reg.* *= src;
-            ip_ofs += 3;
-        },
-        flgs.is_ref => {
-            const src_ref: Ref = fetch16(memory + ip + 2);
-            dst_reg.* *= fetch32(memory + src_ref);
-            ip_ofs += 3;
-        },
-        else => {
-            return;
-        },
-    }
-}
-
-fn div32(machine: *Machine) void {
-    var ip_ofs: u8 = opc_sz;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip += ip_ofs;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst_reg: Reg = getReg(machine, 1);
-
-    switch (flg) {
-        flgs.is_reg => {
-            const src: Reg = getReg(machine, 2);
-            dst_reg.* /= src.*;
-            ip_ofs += 2;
-        },
-        flgs.is_imm => {
-            const src: Imm16 = fetch16(memory + ip + 2);
-            dst_reg.* /= src;
-            ip_ofs += 3;
-        },
-        flgs.is_ref => {
-            const src_ref: Ref = fetch16(memory + ip + 2);
-            dst_reg.* /= fetch32(memory + src_ref);
-            ip_ofs += 3;
-        },
-        else => {
-            return;
-        },
-    }
-}
-
-fn and32(machine: *Machine) void {
-    var ip_ofs: u8 = opc_sz;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip += ip_ofs;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst_reg: Reg = getReg(machine, 1);
-
-    switch (flg) {
-        flgs.is_reg => {
-            const src: Reg = getReg(machine, 2);
-            dst_reg.* &= src.*;
-            ip_ofs += 2;
-        },
-        flgs.is_imm => {
-            const src: Imm16 = fetch16(memory + ip + 2);
-            dst_reg.* &= src;
-            ip_ofs += 3;
-        },
-        flgs.is_ref => {
-            const src_ref: Ref = fetch16(memory + ip + 2);
-            dst_reg.* &= fetch32(memory + src_ref);
-            ip_ofs += 3;
-        },
-        else => {
-            return;
-        },
-    }
-}
-
-fn or32(machine: *Machine) void {
-    var ip_ofs: u8 = opc_sz;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip += ip_ofs;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst_reg: Reg = getReg(machine, 1);
-
-    switch (flg) {
-        flgs.is_reg => {
-            const src: Reg = getReg(machine, 2);
-            dst_reg.* |= src.*;
-            ip_ofs += 2;
-        },
-        flgs.is_imm => {
-            const src: Imm16 = fetch16(memory + ip + 2);
-            dst_reg.* |= src;
-            ip_ofs += 3;
-        },
-        flgs.is_ref => {
-            const src_ref: Ref = fetch16(memory + ip + 2);
-            dst_reg.* |= fetch32(memory + src_ref);
-            ip_ofs += 3;
-        },
-        else => {
-            return;
-        },
-    }
-}
-
-fn xor32(machine: *Machine) void {
-    var ip_ofs: u8 = opc_sz;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip += ip_ofs;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst_reg: Reg = getReg(machine, 1);
-
-    switch (flg) {
-        flgs.is_reg => {
-            const src: Reg = getReg(machine, 2);
-            dst_reg.* ^= src.*;
-            ip_ofs += 2;
-        },
-        flgs.is_imm => {
-            const src: Imm16 = fetch16(memory + ip + 2);
-            dst_reg.* ^= src;
-            ip_ofs += 3;
-        },
-        flgs.is_ref => {
-            const src_ref: Ref = fetch16(memory + ip + 2);
-            dst_reg.* ^= fetch32(memory + src_ref);
-            ip_ofs += 3;
-        },
-        else => {
-            return;
-        },
-    }
-}
-
-// load to register
-fn ldr32(machine: *Machine) void {
-    var ip_ofs: u8 = opc_sz;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip += ip_ofs;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst_reg: Reg = getReg(machine, 1);
-
-    switch (flg) {
-        flgs.is_reg => {
-            const src_reg: Reg = getReg(machine, 2);
-            dst_reg.* = src_reg.*;
-            ip_ofs += 2;
-        },
-        flgs.is_imm => {
-            const src: Imm16 = fetch16(memory + ip + 2);
-            dst_reg.* = src;
-            ip_ofs += 3;
-        },
-        flgs.is_ref => {
-            const src_ref: Ref = fetch16(memory + ip + 2);
-            dst_reg.* = fetch32(memory + src_ref);
-            ip_ofs += 3;
-        },
-        else => {
-            return;
-        },
-    }
-}
-
-// load to memory pointed by register
-fn ldm32(machine: *Machine) void {
-    var ip_ofs: u8 = opc_sz;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip += ip_ofs;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst_reg: Reg = getReg(machine, 1);
-
-    switch (flg) {
-        flgs.is_reg => {
-            const src_reg: Reg = getReg(machine, 2);
-            const dst_ref: Ref = fetch32(memory + dst_reg.*);
-            write32(memory + dst_ref, src_reg.*);
-            ip_ofs += 2;
-        },
-        flgs.is_imm => {
-            const src: Imm16 = fetch16(memory + ip + 2);
-            const dst_ref: Ref = fetch32(memory + dst_reg.*);
-            write32(memory + dst_ref, src);
-            ip_ofs += 3;
-        },
-        flgs.is_ref => {
-            const src_ref: Ref = fetch16(memory + ip + 2);
-            const dst_ref: Ref = fetch32(memory + dst_reg.*);
-            copy32(memory + dst_ref, memory + src_ref);
-            ip_ofs += 3;
-        },
-        else => {
-            return;
-        },
-    }
-}
-
-fn shl32(machine: *Machine) void {
-    var ip_ofs: u8 = opc_sz;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip += ip_ofs;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: u32 = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const dst_reg: Reg = getReg(machine, 1);
-
-    switch (flg) {
-        flgs.is_imm => {
-            const src: Imm8 = memory[ip + 2];
-            dst_reg.* = dst_reg.* << @as(u5, @intCast(src));
-            ip_ofs += 2;
-        },
-        else => {
-            return;
-        },
-    }
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.shl_();
 }
 
 fn cmp(machine: *Machine) void {
-    const ip_ofs: u8 = opc_sz;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip += ip_ofs;
-    }
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.cmp();
+}
 
-    const gr0: ByteWidth = cpu.gr0;
-    const gr1: ByteWidth = cpu.gr1;
-
-    if (gr0 > gr1) {
-        cpu.flag &= 0b00;
-    } else if (gr0 == gr1) {
-        cpu.flag &= 0b01;
-    } else {
-        cpu.flag &= 0b10;
-    }
+fn ld(machine: *Machine) void {
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.ld();
 }
 
 fn jmp(machine: *Machine) void {
-    var dst_loc: ByteWidth = 0;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip = dst_loc;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: ByteWidth = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const gr0: ByteWidth = cpu.gr0;
-
-    switch (flg) {
-        flgs.is_rel => {
-            // if gr0 signed
-            if (gr0 >> 31 == 0b1) {
-                dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
-            } else {
-                dst_loc = cpu.ip + opc_sz + gr0;
-            }
-        },
-        flgs.is_abs => {
-            dst_loc = gr0;
-        },
-        else => print("unrecognized flag\n", .{}),
-    }
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.jmp();
 }
 
 // jump if greater
 fn jg(machine: *Machine) void {
-    var dst_loc: ByteWidth = 0;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip = dst_loc;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: ByteWidth = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const gr0: ByteWidth = cpu.gr0;
-
-    if ((cpu.flag & 0b00) == 0b00) {
-        switch (flg) {
-            flgs.is_rel => {
-                // if gr0 signed
-                if (gr0 >> 31 == 0b1) {
-                    dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
-                } else {
-                    dst_loc = cpu.ip + opc_sz + gr0;
-                }
-            },
-            flgs.is_abs => {
-                dst_loc = gr0;
-            },
-            else => print("unrecognized flag\n", .{}),
-        }
-    } else {
-        dst_loc += cpu.ip + opc_sz;
-    }
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.jg();
 }
 
-// jump if equal
+// jump if zero
 fn jz(machine: *Machine) void {
-    var dst_loc: ByteWidth = 0;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip = dst_loc;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: ByteWidth = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const gr0: ByteWidth = cpu.gr0;
-
-    if ((cpu.flag & 0b10) == 0b10) {
-        switch (flg) {
-            flgs.is_rel => {
-                // if gr0 minus
-                if (gr0 >> 31 == 0b1) {
-                    dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
-                } else {
-                    dst_loc = cpu.ip + opc_sz + gr0;
-                }
-            },
-            flgs.is_abs => {
-                dst_loc = gr0;
-            },
-            else => print("unrecognized flag\n", .{}),
-        }
-    } else {
-        dst_loc += cpu.ip + opc_sz;
-    }
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.jz();
 }
 
+// jump if zero
 fn jl(machine: *Machine) void {
-    var dst_loc: ByteWidth = 0;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip = dst_loc;
-    }
-    const memory: [*]u8 = machine.memory;
-    const ip: ByteWidth = cpu.ip;
-    const flg: u8 = memory[ip] & flgs.flg_msk;
-    const gr0: ByteWidth = cpu.gr0;
-
-    if ((cpu.flag & 0b00) == 0b00) {
-        switch (flg) {
-            flgs.is_rel => {
-                // if gr0 signed
-                if (gr0 >> 31 == 0b1) {
-                    dst_loc = cpu.ip + opc_sz - ((gr0 << 1) >> 1);
-                } else {
-                    dst_loc = cpu.ip + opc_sz + gr0;
-                }
-            },
-            flgs.is_abs => {
-                dst_loc = gr0;
-            },
-            else => print("unrecognized flag\n", .{}),
-        }
-    } else {
-        dst_loc += cpu.ip + opc_sz;
-    }
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.jl();
 }
 
 fn nop(machine: *Machine) void {
@@ -709,6 +529,3 @@ fn nop(machine: *Machine) void {
         cpu.ip += ip_ofs;
     }
 }
-
-fn pop64() void {}
-fn push64() void {}
