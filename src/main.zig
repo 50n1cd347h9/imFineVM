@@ -34,7 +34,6 @@ pub fn main() !void {
     const start = try Instant.now();
     while (true) {
         const opcode: u8 = memory[cpu.ip] >> 2;
-        print("opcode {x}\n", .{opcode});
         prev_ip = cpu.ip;
         instruction[opcode](&machine);
         //if (cpu.ip == prev_ip) break;
