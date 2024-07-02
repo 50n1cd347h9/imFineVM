@@ -168,6 +168,7 @@ pub fn Instruction() type {
                 defer {
                     self.cpu.ip += self.ip_ofs;
                     self.cpu.sp += machine_bytes;
+                    self.refresh();
                 }
                 switch (self.ext) {
                     Ext.reg => {
@@ -196,6 +197,7 @@ pub fn Instruction() type {
                 defer {
                     self.cpu.ip += self.ip_ofs;
                     self.cpu.sp -= machine_bytes;
+                    self.refresh();
                 }
                 switch (self.ext) {
                     Ext.imm => {
@@ -246,6 +248,7 @@ pub fn Instruction() type {
             fn lambda(self: *Self) void {
                 defer {
                     self.cpu.ip += self.ip_ofs;
+                    self.refresh();
                 }
                 _ = self.arithmetic_switching(struct {
                     fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
@@ -260,6 +263,7 @@ pub fn Instruction() type {
             fn lambda(self: *Self) void {
                 defer {
                     self.cpu.ip += self.ip_ofs;
+                    self.refresh();
                 }
                 _ = self.arithmetic_switching(struct {
                     fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
@@ -274,6 +278,7 @@ pub fn Instruction() type {
             fn lambda(self: *Self) void {
                 defer {
                     self.cpu.ip += self.ip_ofs;
+                    self.refresh();
                 }
                 _ = self.arithmetic_switching(struct {
                     fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
@@ -288,6 +293,7 @@ pub fn Instruction() type {
             fn lambda(self: *Self) void {
                 defer {
                     self.cpu.ip += self.ip_ofs;
+                    self.refresh();
                 }
                 _ = self.arithmetic_switching(struct {
                     fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
@@ -302,6 +308,7 @@ pub fn Instruction() type {
             fn lambda(self: *Self) void {
                 defer {
                     self.cpu.ip += self.ip_ofs;
+                    self.refresh();
                 }
                 _ = self.arithmetic_switching(struct {
                     fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
@@ -316,6 +323,7 @@ pub fn Instruction() type {
             fn lambda(self: *Self) void {
                 defer {
                     self.cpu.ip += self.ip_ofs;
+                    self.refresh();
                 }
                 _ = self.arithmetic_switching(struct {
                     fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
@@ -330,6 +338,7 @@ pub fn Instruction() type {
             fn lambda(self: *Self) void {
                 defer {
                     self.cpu.ip += self.ip_ofs;
+                    self.refresh();
                 }
                 _ = self.arithmetic_switching(struct {
                     fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
@@ -346,6 +355,7 @@ pub fn Instruction() type {
                 defer {
                     self.cpu.ip += self.ip_ofs;
                     self.cpu.flag &= @as(u8, @intCast(flag));
+                    self.refresh();
                 }
                 flag = self.arithmetic_switching(struct {
                     fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
@@ -368,6 +378,7 @@ pub fn Instruction() type {
                 self.ip_ofs += self.imm_bytes;
                 defer {
                     self.cpu.ip += self.ip_ofs;
+                    self.refresh();
                 }
                 const memory: [*]u8 = self.memory;
                 const ip: ByteWidth = self.ip;
@@ -406,6 +417,7 @@ pub fn Instruction() type {
                 self.ip_ofs += self.imm_bytes;
                 defer {
                     self.cpu.ip += self.ip_ofs;
+                    self.refresh();
                 }
                 const memory: [*]u8 = self.memory;
                 const ip: ByteWidth = self.ip;
@@ -441,6 +453,7 @@ pub fn Instruction() type {
                 var dst_loc: ByteWidth = 0;
                 defer {
                     self.cpu.ip = dst_loc;
+                    self.refresh();
                 }
                 dst_loc = self.jump_switching();
             }
@@ -465,6 +478,7 @@ pub fn Instruction() type {
                 var dst_loc: ByteWidth = 0;
                 defer {
                     self.cpu.ip = dst_loc;
+                    self.refresh();
                 }
                 if ((self.cpu.flag & 0b01) == 0b01) {
                     dst_loc = self.jump_switching();
@@ -479,6 +493,7 @@ pub fn Instruction() type {
                 var dst_loc: ByteWidth = 0;
                 defer {
                     self.cpu.ip = dst_loc;
+                    self.refresh();
                 }
                 if ((self.cpu.flag & 0b10) == 0b10) {
                     dst_loc = self.jump_switching();
@@ -492,6 +507,7 @@ pub fn Instruction() type {
             fn lambda(self: *Self) void {
                 defer {
                     self.cpu.sp -= machine_bytes;
+                    self.refresh();
                 }
                 const ret_addr = self.ip + self.ip_ofs + self.imm_bytes;
                 write(self.memory + self.sp - machine_bytes, ret_addr, machine_bytes);
@@ -505,6 +521,7 @@ pub fn Instruction() type {
                 defer {
                     self.cpu.sp += machine_bytes;
                     self.cpu.ip = ret_addr;
+                    self.refresh();
                 }
             }
         }.lambda;
@@ -514,6 +531,7 @@ pub fn Instruction() type {
                 self.ip_ofs = opc_sz;
                 defer {
                     self.cpu.ip += self.ip_ofs;
+                    self.refresh();
                 }
             }
         }.lambda;
