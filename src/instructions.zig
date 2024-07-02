@@ -432,6 +432,7 @@ const Instruction = struct {
     fn ret(self: *Instruction) void {
         const ret_addr: ByteWidth = fetch(self.memory + self.sp, machine_bytes);
         defer {
+            self.cpu.sp += machine_bytes;
             self.cpu.ip = ret_addr;
         }
     }
