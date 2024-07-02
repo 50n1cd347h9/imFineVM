@@ -84,7 +84,7 @@ const Instruction = struct {
         var dst_loc: ByteWidth = 0;
         switch (self.ext) {
             Ext.imm => {
-                const dst_loc_rel: u32 = fetch(self.memory + self.ip + 2, 1);
+                const dst_loc_rel: u32 = fetch(self.memory + self.ip + 2, self.imm_bytes);
                 if (dst_loc_rel >> 31 == 0b1) {
                     dst_loc = self.cpu.ip + opc_sz + 2 - ((dst_loc_rel << 1) >> 1);
                 } else {
