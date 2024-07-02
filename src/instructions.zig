@@ -95,8 +95,25 @@ pub fn Instruction() type {
         }
 
         fn initInstructions() void {
+            func_vec[@intFromEnum(InsCode.push)] = push;
+            func_vec[@intFromEnum(InsCode.pop)] = pop;
             func_vec[@intFromEnum(InsCode.add)] = add;
-            //            func_vec[@intFromEnum(InsCode.sub)] = self.sub;
+            func_vec[@intFromEnum(InsCode.sub)] = sub;
+            func_vec[@intFromEnum(InsCode.div)] = div;
+            func_vec[@intFromEnum(InsCode.and_)] = and_;
+            func_vec[@intFromEnum(InsCode.or_)] = or_;
+            func_vec[@intFromEnum(InsCode.xor)] = xor;
+            func_vec[@intFromEnum(InsCode.shl_)] = shl_;
+            func_vec[@intFromEnum(InsCode.ldr)] = ldr;
+            func_vec[@intFromEnum(InsCode.ldm)] = ldm;
+            func_vec[@intFromEnum(InsCode.cmp)] = cmp;
+            func_vec[@intFromEnum(InsCode.jmp)] = jmp;
+            func_vec[@intFromEnum(InsCode.jz)] = jz;
+            func_vec[@intFromEnum(InsCode.jg)] = jg;
+            func_vec[@intFromEnum(InsCode.jl)] = jl;
+            func_vec[@intFromEnum(InsCode.call)] = call;
+            func_vec[@intFromEnum(InsCode.ret)] = ret;
+            func_vec[@intFromEnum(InsCode.nop)] = nop;
         }
 
         fn jump_switching(self: *Self) ByteWidth {
@@ -145,59 +162,63 @@ pub fn Instruction() type {
             }
         }
 
-        fn pop(self: *Self) void {
-            self.ip_ofs += self.imm_bytes;
-            defer {
-                self.cpu.ip += self.ip_ofs;
-                self.cpu.sp += machine_bytes;
+        pub const pop = struct {
+            fn lambda(self: *Self) void {
+                self.ip_ofs += self.imm_bytes;
+                defer {
+                    self.cpu.ip += self.ip_ofs;
+                    self.cpu.sp += machine_bytes;
+                }
+                switch (self.ext) {
+                    Ext.reg => {
+                        const dst_reg: Reg = getReg(self.cpu, self.memory[self.ip + 2]);
+                        const src = fetch(self.memory + self.sp, machine_bytes);
+                        dst_reg.* = src;
+                    },
+                    Ext.imm_ref => {
+                        const dst_ref: Ref = fetch(self.memory + self.ip + 2, self.imm_bytes);
+                        copy(self.memory + dst_ref, self.memory + self.sp, machine_bytes);
+                    },
+                    Ext.reg_ref => {
+                        const dst_ref = (getReg(self.cpu, self.memory[self.ip + 2])).*;
+                        copy(self.memory + dst_ref, self.memory + self.sp, machine_bytes);
+                    },
+                    else => {
+                        return;
+                    },
+                }
             }
-            switch (self.ext) {
-                Ext.reg => {
-                    const dst_reg: Reg = getReg(self.cpu, self.memory[self.ip + 2]);
-                    const src = fetch(self.memory + self.sp, machine_bytes);
-                    dst_reg.* = src;
-                },
-                Ext.imm_ref => {
-                    const dst_ref: Ref = fetch(self.memory + self.ip + 2, self.imm_bytes);
-                    copy(self.memory + dst_ref, self.memory + self.sp, machine_bytes);
-                },
-                Ext.reg_ref => {
-                    const dst_ref = (getReg(self.cpu, self.memory[self.ip + 2])).*;
-                    copy(self.memory + dst_ref, self.memory + self.sp, machine_bytes);
-                },
-                else => {
-                    return;
-                },
-            }
-        }
+        }.lambda;
 
-        fn push(self: *Self) void {
-            self.ip_ofs += self.imm_bytes;
-            defer {
-                self.cpu.ip += self.ip_ofs;
-                self.cpu.sp -= machine_bytes;
+        pub const push = struct {
+            fn lambda(self: *Self) void {
+                self.ip_ofs += self.imm_bytes;
+                defer {
+                    self.cpu.ip += self.ip_ofs;
+                    self.cpu.sp -= machine_bytes;
+                }
+                switch (self.ext) {
+                    Ext.imm => {
+                        copy(self.memory + self.sp - machine_bytes, self.memory + self.ip + 2, self.imm_bytes);
+                    },
+                    Ext.reg => {
+                        const src = (getReg(self.cpu, self.memory[self.ip + 2])).*;
+                        write(self.memory + self.sp - machine_bytes, src, machine_bytes);
+                    },
+                    Ext.imm_ref => {
+                        const src_ref: Ref = fetch(self.memory + self.ip + 2, machine_bytes);
+                        copy(self.memory + self.sp - machine_bytes, self.memory + src_ref, machine_bytes);
+                    },
+                    Ext.reg_ref => {
+                        const src_ref: Ref = (getReg(self.cpu, self.memory[self.ip + 2])).*;
+                        copy(self.memory + self.sp - machine_bytes, self.memory + src_ref, machine_bytes);
+                    },
+                    else => {
+                        return;
+                    },
+                }
             }
-            switch (self.ext) {
-                Ext.imm => {
-                    copy(self.memory + self.sp - machine_bytes, self.memory + self.ip + 2, self.imm_bytes);
-                },
-                Ext.reg => {
-                    const src = (getReg(self.cpu, self.memory[self.ip + 2])).*;
-                    write(self.memory + self.sp - machine_bytes, src, machine_bytes);
-                },
-                Ext.imm_ref => {
-                    const src_ref: Ref = fetch(self.memory + self.ip + 2, machine_bytes);
-                    copy(self.memory + self.sp - machine_bytes, self.memory + src_ref, machine_bytes);
-                },
-                Ext.reg_ref => {
-                    const src_ref: Ref = (getReg(self.cpu, self.memory[self.ip + 2])).*;
-                    copy(self.memory + self.sp - machine_bytes, self.memory + src_ref, machine_bytes);
-                },
-                else => {
-                    return;
-                },
-            }
-        }
+        }.lambda;
 
         pub const hoge = struct {
             fn lambda(self: *Self) void {
@@ -221,255 +242,280 @@ pub fn Instruction() type {
             }
         }.lambda;
 
-        fn sub(self: *Self) void {
-            defer {
-                self.cpu.ip += self.ip_ofs;
-            }
-            _ = self.arithmetic_switching(struct {
-                fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
-                    dst_reg.* -= src;
-                    return 0;
+        pub const sub = struct {
+            fn lambda(self: *Self) void {
+                defer {
+                    self.cpu.ip += self.ip_ofs;
                 }
-            }.execute);
-        }
-
-        fn mul(self: *Self) void {
-            defer {
-                self.cpu.ip += self.ip_ofs;
-            }
-            _ = self.arithmetic_switching(struct {
-                fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
-                    dst_reg.* *= src;
-                    return 0;
-                }
-            }.execute);
-        }
-
-        fn div(self: *Self) void {
-            defer {
-                self.cpu.ip += self.ip_ofs;
-            }
-            _ = self.arithmetic_switching(struct {
-                fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
-                    dst_reg.* /= src;
-                    return 0;
-                }
-            }.execute);
-        }
-
-        fn and_(self: *Self) void {
-            defer {
-                self.cpu.ip += self.ip_ofs;
-            }
-            _ = self.arithmetic_switching(struct {
-                fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
-                    dst_reg.* &= src;
-                    return 0;
-                }
-            }.execute);
-        }
-
-        fn or_(self: *Self) void {
-            defer {
-                self.cpu.ip += self.ip_ofs;
-            }
-            _ = self.arithmetic_switching(struct {
-                fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
-                    dst_reg.* |= src;
-                    return 0;
-                }
-            }.execute);
-        }
-
-        fn xor(self: *Self) void {
-            defer {
-                self.cpu.ip += self.ip_ofs;
-            }
-            _ = self.arithmetic_switching(struct {
-                fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
-                    dst_reg.* ^= src;
-                    return 0;
-                }
-            }.execute);
-        }
-
-        fn shl_(self: *Self) void {
-            defer {
-                self.cpu.ip += self.ip_ofs;
-            }
-            _ = self.arithmetic_switching(struct {
-                fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
-                    dst_reg.* = dst_reg.* << @as(u5, @intCast(src));
-                    return 0;
-                }
-            }.execute);
-        }
-
-        fn cmp(self: *Self) void {
-            var flag: ByteWidth = 0b00;
-            defer {
-                self.cpu.ip += self.ip_ofs;
-                self.cpu.flag &= @as(u8, @intCast(flag));
-            }
-            flag = self.arithmetic_switching(struct {
-                fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
-                    const dst: ByteWidth = dst_reg.*;
-                    if (dst > src) {
-                        return 0b00;
-                    } else if (dst == src) {
-                        return 0b01;
-                    } else {
-                        return 0b10;
+                _ = self.arithmetic_switching(struct {
+                    fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                        dst_reg.* -= src;
+                        return 0;
                     }
-                }
-            }.execute);
-        }
-
-        fn ld(self: *Self) void {
-            if (self.memory[self.ip] >> 2 == @intFromEnum(InsCode.ldr)) {
-                self.ldr();
-            } else {
-                self.ldm();
+                }.execute);
             }
-        }
+        }.lambda;
+
+        pub const mul = struct {
+            fn lambda(self: *Self) void {
+                defer {
+                    self.cpu.ip += self.ip_ofs;
+                }
+                _ = self.arithmetic_switching(struct {
+                    fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                        dst_reg.* *= src;
+                        return 0;
+                    }
+                }.execute);
+            }
+        }.lambda;
+
+        pub const div = struct {
+            fn lambda(self: *Self) void {
+                defer {
+                    self.cpu.ip += self.ip_ofs;
+                }
+                _ = self.arithmetic_switching(struct {
+                    fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                        dst_reg.* /= src;
+                        return 0;
+                    }
+                }.execute);
+            }
+        }.lambda;
+
+        pub const and_ = struct {
+            fn lambda(self: *Self) void {
+                defer {
+                    self.cpu.ip += self.ip_ofs;
+                }
+                _ = self.arithmetic_switching(struct {
+                    fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                        dst_reg.* &= src;
+                        return 0;
+                    }
+                }.execute);
+            }
+        }.lambda;
+
+        pub const or_ = struct {
+            fn lambda(self: *Self) void {
+                defer {
+                    self.cpu.ip += self.ip_ofs;
+                }
+                _ = self.arithmetic_switching(struct {
+                    fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                        dst_reg.* |= src;
+                        return 0;
+                    }
+                }.execute);
+            }
+        }.lambda;
+
+        pub const xor = struct {
+            fn lambda(self: *Self) void {
+                defer {
+                    self.cpu.ip += self.ip_ofs;
+                }
+                _ = self.arithmetic_switching(struct {
+                    fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                        dst_reg.* ^= src;
+                        return 0;
+                    }
+                }.execute);
+            }
+        }.lambda;
+
+        pub const shl_ = struct {
+            fn lambda(self: *Self) void {
+                defer {
+                    self.cpu.ip += self.ip_ofs;
+                }
+                _ = self.arithmetic_switching(struct {
+                    fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                        dst_reg.* = dst_reg.* << @as(u5, @intCast(src));
+                        return 0;
+                    }
+                }.execute);
+            }
+        }.lambda;
+
+        pub const cmp = struct {
+            fn lambda(self: *Self) void {
+                var flag: ByteWidth = 0b00;
+                defer {
+                    self.cpu.ip += self.ip_ofs;
+                    self.cpu.flag &= @as(u8, @intCast(flag));
+                }
+                flag = self.arithmetic_switching(struct {
+                    fn execute(dst_reg: Reg, src: ByteWidth) ByteWidth {
+                        const dst: ByteWidth = dst_reg.*;
+                        if (dst > src) {
+                            return 0b00;
+                        } else if (dst == src) {
+                            return 0b01;
+                        } else {
+                            return 0b10;
+                        }
+                    }
+                }.execute);
+            }
+        }.lambda;
 
         // load to register
-        fn ldr(self: *Self) void {
-            self.ip_ofs += self.imm_bytes;
-            defer {
-                self.cpu.ip += self.ip_ofs;
+        pub const ldr = struct {
+            fn lambda(self: *Self) void {
+                self.ip_ofs += self.imm_bytes;
+                defer {
+                    self.cpu.ip += self.ip_ofs;
+                }
+                const memory: [*]u8 = self.memory;
+                const ip: ByteWidth = self.ip;
+                const imm_bytes: u8 = self.imm_bytes;
+                const dst_reg: Reg = self.first_reg;
+                const cpu: *Cpu = self.cpu;
+                switch (self.ext) {
+                    Ext.imm => {
+                        const src = fetch(memory + ip + 2, imm_bytes);
+                        dst_reg.* = src;
+                    },
+                    Ext.reg => {
+                        const src_reg: Reg = getReg(cpu, memory[ip + 2]);
+                        dst_reg.* = src_reg.*;
+                    },
+                    Ext.imm_ref => {
+                        const src_ref: Ref = fetch(memory + ip + 2, imm_bytes);
+                        const src = fetch(memory + src_ref, machine_bytes);
+                        dst_reg.* = src;
+                    },
+                    Ext.reg_ref => {
+                        const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
+                        const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
+                        dst_reg.* = src;
+                    },
+                    else => {
+                        return;
+                    },
+                }
             }
-            const memory: [*]u8 = self.memory;
-            const ip: ByteWidth = self.ip;
-            const imm_bytes: u8 = self.imm_bytes;
-            const dst_reg: Reg = self.first_reg;
-            const cpu: *Cpu = self.cpu;
-            switch (self.ext) {
-                Ext.imm => {
-                    const src = fetch(memory + ip + 2, imm_bytes);
-                    dst_reg.* = src;
-                },
-                Ext.reg => {
-                    const src_reg: Reg = getReg(cpu, memory[ip + 2]);
-                    dst_reg.* = src_reg.*;
-                },
-                Ext.imm_ref => {
-                    const src_ref: Ref = fetch(memory + ip + 2, imm_bytes);
-                    const src = fetch(memory + src_ref, machine_bytes);
-                    dst_reg.* = src;
-                },
-                Ext.reg_ref => {
-                    const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
-                    const src = fetch(memory + src_ref, @sizeOf(ByteWidth) / 8);
-                    dst_reg.* = src;
-                },
-                else => {
-                    return;
-                },
-            }
-        }
+        }.lambda;
 
         // load to memory pointed by register
-        fn ldm(self: *Self) void {
-            self.ip_ofs += self.imm_bytes;
-            defer {
-                self.cpu.ip += self.ip_ofs;
+        pub const ldm = struct {
+            fn lambda(self: *Self) void {
+                self.ip_ofs += self.imm_bytes;
+                defer {
+                    self.cpu.ip += self.ip_ofs;
+                }
+                const memory: [*]u8 = self.memory;
+                const ip: ByteWidth = self.ip;
+                const imm_bytes: u8 = self.imm_bytes;
+                const dst_reg: Reg = self.first_reg;
+                const dst_ref: Ref = dst_reg.*;
+                const cpu: *Cpu = self.cpu;
+                switch (self.ext) {
+                    Ext.imm => {
+                        copy(memory + dst_ref, memory + ip + 2, imm_bytes);
+                    },
+                    Ext.reg => {
+                        const src_reg: Reg = getReg(cpu, memory[ip + 2]);
+                        write(memory + dst_ref, src_reg.*, machine_bytes);
+                    },
+                    Ext.imm_ref => {
+                        const src_ref: Ref = fetch(memory + ip + 2, imm_bytes);
+                        copy(memory + dst_ref, memory + src_ref, machine_bytes);
+                    },
+                    Ext.reg_ref => {
+                        const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
+                        copy(memory + dst_ref, memory + src_ref, machine_bytes);
+                    },
+                    else => {
+                        return;
+                    },
+                }
             }
-            const memory: [*]u8 = self.memory;
-            const ip: ByteWidth = self.ip;
-            const imm_bytes: u8 = self.imm_bytes;
-            const dst_reg: Reg = self.first_reg;
-            const dst_ref: Ref = dst_reg.*;
-            const cpu: *Cpu = self.cpu;
-            switch (self.ext) {
-                Ext.imm => {
-                    copy(memory + dst_ref, memory + ip + 2, imm_bytes);
-                },
-                Ext.reg => {
-                    const src_reg: Reg = getReg(cpu, memory[ip + 2]);
-                    write(memory + dst_ref, src_reg.*, machine_bytes);
-                },
-                Ext.imm_ref => {
-                    const src_ref: Ref = fetch(memory + ip + 2, imm_bytes);
-                    copy(memory + dst_ref, memory + src_ref, machine_bytes);
-                },
-                Ext.reg_ref => {
-                    const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
-                    copy(memory + dst_ref, memory + src_ref, machine_bytes);
-                },
-                else => {
-                    return;
-                },
-            }
-        }
+        }.lambda;
 
-        fn jmp(self: *Self) void {
-            var dst_loc: ByteWidth = 0;
-            defer {
-                self.cpu.ip = dst_loc;
-            }
-            dst_loc = self.jump_switching();
-        }
-
-        fn jg(self: *Self) void {
-            var dst_loc: ByteWidth = 0;
-            defer {
-                self.cpu.ip = dst_loc;
-            }
-            if ((self.cpu.flag & 0b00) == 0b00) {
+        pub const jmp = struct {
+            fn lambda(self: *Self) void {
+                var dst_loc: ByteWidth = 0;
+                defer {
+                    self.cpu.ip = dst_loc;
+                }
                 dst_loc = self.jump_switching();
-            } else {
-                dst_loc += self.cpu.ip + opc_sz;
             }
-        }
+        }.lambda;
 
-        fn jz(self: *Self) void {
-            var dst_loc: ByteWidth = 0;
-            defer {
-                self.cpu.ip = dst_loc;
+        pub const jg = struct {
+            fn lambda(self: *Self) void {
+                var dst_loc: ByteWidth = 0;
+                defer {
+                    self.cpu.ip = dst_loc;
+                }
+                if ((self.cpu.flag & 0b00) == 0b00) {
+                    dst_loc = self.jump_switching();
+                } else {
+                    dst_loc += self.cpu.ip + opc_sz;
+                }
             }
-            if ((self.cpu.flag & 0b01) == 0b01) {
-                dst_loc = self.jump_switching();
-            } else {
-                dst_loc += self.cpu.ip + opc_sz;
-            }
-        }
+        }.lambda;
 
-        fn jl(self: *Self) void {
-            var dst_loc: ByteWidth = 0;
-            defer {
-                self.cpu.ip = dst_loc;
+        pub const jz = struct {
+            fn lambda(self: *Self) void {
+                var dst_loc: ByteWidth = 0;
+                defer {
+                    self.cpu.ip = dst_loc;
+                }
+                if ((self.cpu.flag & 0b01) == 0b01) {
+                    dst_loc = self.jump_switching();
+                } else {
+                    dst_loc += self.cpu.ip + opc_sz;
+                }
             }
-            if ((self.cpu.flag & 0b10) == 0b10) {
-                dst_loc = self.jump_switching();
-            } else {
-                dst_loc += self.cpu.ip + opc_sz;
-            }
-        }
+        }.lambda;
 
-        fn call(self: *Self) void {
-            defer {
-                self.cpu.sp -= machine_bytes;
+        pub const jl = struct {
+            fn lambda(self: *Self) void {
+                var dst_loc: ByteWidth = 0;
+                defer {
+                    self.cpu.ip = dst_loc;
+                }
+                if ((self.cpu.flag & 0b10) == 0b10) {
+                    dst_loc = self.jump_switching();
+                } else {
+                    dst_loc += self.cpu.ip + opc_sz;
+                }
             }
-            const ret_addr = self.ip + self.ip_ofs + self.imm_bytes;
-            write(self.memory + self.sp - machine_bytes, ret_addr, machine_bytes);
-            self.jmp();
-        }
+        }.lambda;
 
-        fn ret(self: *Self) void {
-            const ret_addr: ByteWidth = fetch(self.memory + self.sp, machine_bytes);
-            defer {
-                self.cpu.sp += machine_bytes;
-                self.cpu.ip = ret_addr;
+        pub const call = struct {
+            fn lambda(self: *Self) void {
+                defer {
+                    self.cpu.sp -= machine_bytes;
+                }
+                const ret_addr = self.ip + self.ip_ofs + self.imm_bytes;
+                write(self.memory + self.sp - machine_bytes, ret_addr, machine_bytes);
+                self.jmp();
             }
-        }
+        }.lambda;
+
+        pub const ret = struct {
+            fn lambda(self: *Self) void {
+                const ret_addr: ByteWidth = fetch(self.memory + self.sp, machine_bytes);
+                defer {
+                    self.cpu.sp += machine_bytes;
+                    self.cpu.ip = ret_addr;
+                }
+            }
+        }.lambda;
+
+        pub const nop = struct {
+            fn lambda(self: *Self) void {
+                self.ip_ofs = opc_sz;
+                defer {
+                    self.cpu.ip += self.ip_ofs;
+                }
+            }
+        }.lambda;
     };
-}
-
-fn nop(machine: *Machine) void {
-    const ip_ofs: u8 = opc_sz;
-    const cpu: *Cpu = &machine.cpu;
-    defer {
-        cpu.ip += ip_ofs;
-    }
 }
