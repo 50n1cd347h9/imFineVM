@@ -48,6 +48,8 @@ pub fn initInstructions() []*const fn (*Machine) void {
     instruction[@intFromEnum(InsCode.jz)] = jz;
     instruction[@intFromEnum(InsCode.jg)] = jg;
     instruction[@intFromEnum(InsCode.jl)] = jl;
+    instruction[@intFromEnum(InsCode.call)] = call;
+    instruction[@intFromEnum(InsCode.ret)] = ret;
     instruction[@intFromEnum(InsCode.nop)] = nop;
 
     return &instruction;
@@ -418,6 +420,22 @@ const Instruction = struct {
         }
     }
 
+    fn call(self: *Instruction) void {
+        defer {
+            self.cpu.sp -= machine_bytes;
+        }
+        const ret_addr = self.ip + opc_sz + 2;
+        write(self.memory + self.sp - machine_bytes, ret_addr, 1);
+        self.jmp();
+    }
+
+    fn ret(self: *Instruction) void {
+        const ret_addr: ByteWidth = fetch(self.memory + self.sp, machine_bytes);
+        defer {
+            self.cpu.ip = ret_addr;
+        }
+    }
+
     fn hoge(self: *Instruction) void {
         print("ip_ofs = {}\n", .{self.ip_ofs});
     }
@@ -520,6 +538,18 @@ fn jl(machine: *Machine) void {
     var ins: Instruction = undefined;
     ins.init(machine);
     ins.jl();
+}
+
+fn call(machine: *Machine) void {
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.call();
+}
+
+fn ret(machine: *Machine) void {
+    var ins: Instruction = undefined;
+    ins.init(machine);
+    ins.ret();
 }
 
 fn nop(machine: *Machine) void {

@@ -3,6 +3,7 @@ const machine_ = @import("./machine.zig");
 const machine_config = @import("./machine_config.zig");
 const std = @import("std");
 const time = std.time;
+const process = std.process;
 const Instant = time.Instant;
 const Timer = time.Timer;
 const print = std.debug.print;
@@ -15,6 +16,12 @@ const MEMORY_SIZE = machine_config.MEMORY_SIZE;
 const Cpu: type = machine_.Cpu;
 
 pub fn main() !void {
+    const args = try process.argsAlloc(std.heap.page_allocator);
+    defer process.argsFree(std.heap.page_allocator, args);
+    if (args.len < 2) {
+        return;
+    }
+
     var machine = machine_.initMachine();
     const instruction = instructions.initInstructions();
 
@@ -22,7 +29,7 @@ pub fn main() !void {
     const memory: [*]u8 = machine.memory;
 
     const executable = try std.fs.cwd().openFile(
-        "./src/executable/test.bin",
+        args[1],
         .{ .mode = .read_only },
     );
     defer executable.close();
@@ -30,11 +37,9 @@ pub fn main() !void {
     //_ = length;
     print("{!}\n\n", .{machine});
 
-    var prev_ip: ByteWidth = 0;
     const start = try Instant.now();
     while (true) {
         const opcode: u8 = memory[cpu.ip] >> 2;
-        prev_ip = cpu.ip;
         instruction[opcode](&machine);
         //if (cpu.ip == prev_ip) break;
         if (cpu.ip >= @as(ByteWidth, @intCast(length))) break;
