@@ -424,7 +424,7 @@ const Instruction = struct {
         defer {
             self.cpu.sp -= machine_bytes;
         }
-        const ret_addr = self.ip + opc_sz + 2;
+        const ret_addr = self.ip + self.ip_ofs + self.imm_bytes;
         write(self.memory + self.sp - machine_bytes, ret_addr, machine_bytes);
         self.jmp();
     }
