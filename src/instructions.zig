@@ -11,7 +11,6 @@ const getReg = sub_instructions.getReg;
 const fetch = sub_instructions.fetch;
 const copy = sub_instructions.copy;
 
-const opr_sz = machine_config.opr_sz;
 const opc_sz = machine_config.opc_sz;
 const ByteWidth = machine_config.ByteWidth;
 const SignedByteWidth = machine_config.SignedByteWidth;
@@ -63,7 +62,7 @@ const Instruction = struct {
     sp: ByteWidth,
     ext: u8,
     len: u8,
-    reg: u8,
+    first: u8,
     imm_bytes: u8,
     first_reg: Reg,
 
@@ -75,9 +74,9 @@ const Instruction = struct {
         self.memory = machine.memory;
         self.ext = self.memory[self.ip] & ext_msk;
         self.len = self.memory[self.ip + 1] >> 5;
-        self.reg = self.memory[self.ip + 1] << 3 >> 5;
+        self.first = self.memory[self.ip + 1] << 3 >> 5;
         self.imm_bytes = if (self.len != 0) @divExact(pow(u8, 2, self.len + 2), 8) else 0;
-        self.first_reg = getReg(self.cpu, self.reg);
+        self.first_reg = getReg(self.cpu, self.first);
     }
 
     fn jump_switching(self: *Instruction) ByteWidth {
