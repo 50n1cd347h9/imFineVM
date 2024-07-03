@@ -79,8 +79,8 @@ pub fn Instruction() type {
             const sp = cpu.sp;
             const memory = self.memory;
             const ext = memory[ip] & ext_msk;
-            const len = memory[ip + 1] >> 5;
-            const first = memory[ip + 1] << 3 >> 5;
+            const len = memory[ip + opc_sz] >> 5;
+            const first = memory[ip + opc_sz] << 3 >> 5;
             const imm_bytes = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
             const first_reg = getReg(cpu, first);
 
@@ -120,11 +120,11 @@ pub fn Instruction() type {
             var dst_loc: ByteWidth = 0;
             switch (self.ext) {
                 Ext.imm => {
-                    const dst_loc_rel: u32 = fetch(self.memory + self.ip + 2, self.imm_bytes);
-                    if (dst_loc_rel >> 31 == 0b1) {
-                        dst_loc = self.cpu.ip + opc_sz + 2 - ((dst_loc_rel << 1) >> 1);
+                    const dst_loc_rel: ByteWidth = fetch(self.memory + self.ip + 2, @sizeOf(ByteWidth));
+                    if (dst_loc_rel >> (@sizeOf(ByteWidth) * 8 - 1) == 0b1) {
+                        dst_loc = self.cpu.ip + self.ip_ofs + self.imm_bytes - ((dst_loc_rel << 1) >> 1);
                     } else {
-                        dst_loc = self.cpu.ip + opc_sz + 2 + dst_loc_rel;
+                        dst_loc = self.cpu.ip + self.ip_ofs + self.imm_bytes + dst_loc_rel;
                     }
                 },
                 else => undefined,
