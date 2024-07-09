@@ -17,8 +17,9 @@ Its structure is as follows
 | immediate or register 1~128bits      |
 ```
 ## oprands
-reg means register and indicates the first operand.
-The third byte means immediate or register and indicates the second operand.
+reg means register and indicates the first operand.<br>
+The third byte means immediate or register and indicates the second operand.<br>
+For instructions that take only one operand, that operand is represented as a second operand
 
 ## registers
 Each of the six registers is assigned the following numbers
