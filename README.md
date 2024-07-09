@@ -7,7 +7,8 @@ zig build
 The built binary is `zig-out/bin/imFineVM`, but set the alias if necessary
 
 # What is imFineVM
-imFineVM is a virtual machine consisting of original instructions, cpu (and registers) and memory.
+imFineVM is a virtual machine consisting of original instructions, cpu (and registers) and memory.<br>
+By default, registers are `32 bits` wide and the stack is aligned by register size.
 
 The instruction consists of at least 3 bytes.
 Its structure is as follows
@@ -54,3 +55,8 @@ len means length of second oprand
 |0 bit|8|16|32|64|128|
 |-|-|-|-|-|-|
 |000|001|010|011|100|101|
+
+## flag register
+|0|1|
+|-|-|
+|zero|carry|
