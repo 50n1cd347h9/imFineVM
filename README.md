@@ -32,10 +32,14 @@ Each of the six registers is assigned the following numbers
 |0x1|0x2|0x3|0x4|0x5|0x6|0x7|0x8|0x9|0xa|0xb|0xc|0xd|0xe|0xf|0x10|0x11|0x12|0x13|0x14|
 
 ## ext
+ext reveals what the second operand indicates
+|imm|reg|[imm]|[reg]|
+|-|-|-|-|
+|00|01|10|11|
+
+[] means that inside it is a reference to memory
 ## len
 len means length of second oprand
 |0 bit|8|16|32|64|128|
 |-|-|-|-|-|-|
 |000|001|010|011|100|101|
-
-The implemented instructions are as follows
