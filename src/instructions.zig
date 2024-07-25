@@ -120,9 +120,12 @@ pub fn Instruction() type {
             var dst_loc: ByteWidth = 0;
             switch (self.ext) {
                 Ext.imm => {
-                    const dst_loc_rel: ByteWidth = fetch(self.memory + self.ip + 2, @sizeOf(ByteWidth));
+                    // dst_loc_rel is signed
+                    var dst_loc_rel: ByteWidth = fetch(self.memory + self.ip + 2, @sizeOf(ByteWidth));
+                    // if minus
                     if (dst_loc_rel >> (@sizeOf(ByteWidth) * 8 - 1) == 0b1) {
-                        dst_loc = self.cpu.ip + self.ip_ofs + self.imm_bytes - ((dst_loc_rel << 1) >> 1);
+                        dst_loc_rel = @intCast(-1 * @as(SignedByteWidth, @bitCast(dst_loc_rel)));
+                        dst_loc = self.cpu.ip + self.ip_ofs + self.imm_bytes - dst_loc_rel;
                     } else {
                         dst_loc = self.cpu.ip + self.ip_ofs + self.imm_bytes + dst_loc_rel;
                     }
