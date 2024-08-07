@@ -1,18 +1,18 @@
-const instructions = @import("./instructions.zig");
+const Instructions = @import("./Instructions.zig");
 const machine_ = @import("./machine.zig");
 const machine_config = @import("./machine_config.zig");
 const std = @import("std");
+const io = std.io;
+const stdout = io.getStdOut().writer();
 const time = std.time;
 const process = std.process;
 const Instant = time.Instant;
 const Timer = time.Timer;
-const print = std.debug.print;
+const debugPrint = std.debug.print;
 
 const opr_sz = machine_config.opr_sz;
 const ByteWidth = machine_config.ByteWidth;
 const SignedByteWidth = machine_config.SignedByteWidth;
-const Instruction = instructions.Instruction;
-const initInstructions = instructions.initInstructions;
 const MEMORY_SIZE = machine_config.MEMORY_SIZE;
 
 const Cpu: type = machine_.Cpu;
@@ -23,20 +23,17 @@ pub fn main() !void {
     if (args.len < 2) {
         return;
     }
-
     const executable = try std.fs.cwd().openFile(
         args[1],
         .{ .mode = .read_only },
     );
     defer executable.close();
+
     var machine = machine_.initMachine();
     const cpu: *Cpu = &machine.cpu;
     const memory: [*]u8 = machine.memory;
     const length: usize = executable.readAll(memory[0..MEMORY_SIZE]) catch unreachable;
-
-    var ins = Instruction().init(&machine);
-
-    print("{!}\n", .{machine});
+    var ins = Instructions.init(&machine);
 
     const start = try Instant.now();
     while (true) {
@@ -46,8 +43,8 @@ pub fn main() !void {
     }
     const end = try Instant.now();
 
-    print("{!}\n", .{machine});
-    print("memory\n{p} = {any}\n", .{ &memory[cpu.sp], memory[cpu.sp .. cpu.sp + 0x10] });
+    debugPrint("{!}\n", .{machine});
+    debugPrint("memory\n{p} = {any}\n", .{ &memory[cpu.sp], memory[cpu.sp .. cpu.sp + 0x10] });
     const elapsed: f64 = @floatFromInt(end.since(start));
-    print("Time elapsed is: {d:.3}ms\n", .{elapsed / time.ns_per_ms});
+    debugPrint("Time elapsed is: {d:.3}ms\n", .{elapsed / time.ns_per_ms});
 }
