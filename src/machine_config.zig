@@ -6,8 +6,8 @@ pub const opr_sz: u8 = @sizeOf(ByteWidth);
 pub const opc_sz: u8 = 1;
 
 pub const ByteWidth: type = u32;
-pub const SignedByteWidth: type = @Type(.{ .Int = .{
-    .bits = @typeInfo(ByteWidth).Int.bits,
+pub const SignedByteWidth: type = @Type(.{ .int = .{
+    .bits = @typeInfo(ByteWidth).int.bits,
     .signedness = builtin.Signedness.signed,
 } });
 

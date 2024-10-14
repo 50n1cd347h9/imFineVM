@@ -1,12 +1,12 @@
 const machine_config = @import("machine_config.zig");
-const machine_ = @import("machine.zig");
+const Machine = @import("Machine.zig");
 const shr = @import("std").math.shr;
 
 const ByteWidth = machine_config.ByteWidth;
 const MEMORY_SIZE = machine_config.MEMORY_SIZE;
-const Machine: type = machine_.Machine;
+const ImFineMac: type = Machine.ImFineMac;
 const RegIdx: type = machine_config.RegIdx;
-const Cpu: type = machine_.Cpu;
+const Cpu: type = Machine.Cpu;
 const Ref: type = machine_config.Ref;
 const Reg: type = machine_config.Reg;
 const machine_bytes: u8 = @sizeOf(ByteWidth);

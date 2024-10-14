@@ -1,21 +1,16 @@
 const Instructions = @import("./Instructions.zig");
-const machine_ = @import("./machine.zig");
 const machine_config = @import("./machine_config.zig");
+const Machine = @import("Machine.zig");
 const std = @import("std");
+
 const io = std.io;
 const stdout = io.getStdOut().writer();
-const time = std.time;
 const process = std.process;
-const Instant = time.Instant;
-const Timer = time.Timer;
-const debugPrint = std.debug.print;
 
 const opr_sz = machine_config.opr_sz;
 const ByteWidth = machine_config.ByteWidth;
 const SignedByteWidth = machine_config.SignedByteWidth;
 const MEMORY_SIZE = machine_config.MEMORY_SIZE;
-
-const Cpu: type = machine_.Cpu;
 
 pub fn main() !void {
     const args = try process.argsAlloc(std.heap.page_allocator);
@@ -29,22 +24,34 @@ pub fn main() !void {
     );
     defer executable.close();
 
-    var machine = machine_.initMachine();
-    const cpu: *Cpu = &machine.cpu;
-    const memory: [*]u8 = machine.memory;
-    const length: usize = executable.readAll(memory[0..MEMORY_SIZE]) catch unreachable;
-    var ins = Instructions.init(&machine);
+    var machine = Machine.init();
+    const length: usize = try executable.readAll(machine.memory[0..MEMORY_SIZE]);
 
-    const start = try Instant.now();
-    while (true) {
-        const opcode: u8 = memory[cpu.ip] >> 2;
-        ins.instruction[opcode](&ins);
-        if (cpu.ip >= @as(ByteWidth, @intCast(length))) break;
-    }
-    const end = try Instant.now();
+    machine.run(length);
+    machine.printDebugInfo();
+}
 
-    debugPrint("{!}\n", .{machine});
-    debugPrint("memory\n{p} = {any}\n", .{ &memory[cpu.sp], memory[cpu.sp .. cpu.sp + 0x10] });
-    const elapsed: f64 = @floatFromInt(end.since(start));
-    debugPrint("Time elapsed is: {d:.3}ms\n", .{elapsed / time.ns_per_ms});
+test "run label.bin" {
+    const test_string =
+        "Machine.Cpu{ .ip = 36, .sp = 65535, .fp = 65535, .gr0 = 63, .gr1 = 0, .flag = 0 }\n";
+
+    const allocator = std.testing.allocator;
+    var stdout_buf = std.ArrayList(u8).init(allocator);
+    defer stdout_buf.deinit();
+    var err_buf = std.ArrayList(u8).init(allocator);
+    defer err_buf.deinit();
+
+    const runvm = [_][]const u8{"./src/test.sh"};
+    var child = std.process.Child.init(&runvm, allocator);
+    child.stderr_behavior = .Pipe;
+    child.stdout_behavior = .Pipe;
+    try child.spawn();
+    try child.collectOutput(&stdout_buf, &err_buf, 0x1000);
+    _ = try child.wait();
+
+    try std.testing.expect(std.mem.eql(
+        u8,
+        stdout_buf.items,
+        test_string,
+    ));
 }
