@@ -109,7 +109,7 @@ pub fn printDebugInfo(self: *Self) void {
     debugPrint(
         \\{!}
         \\memory{any}
-        \\Time elapsed is: {d:.3}ms
+        \\{d:.3} ms
         \\
     , .{
         self.cpu,

@@ -15,9 +15,11 @@ const MEMORY_SIZE = machine_config.MEMORY_SIZE;
 pub fn main() !void {
     const args = try process.argsAlloc(std.heap.page_allocator);
     defer process.argsFree(std.heap.page_allocator, args);
+
     if (args.len < 2) {
         return;
     }
+
     const executable = try std.fs.cwd().openFile(
         args[1],
         .{ .mode = .read_only },

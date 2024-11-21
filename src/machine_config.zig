@@ -20,7 +20,29 @@ pub const Ref: type = ByteWidth;
 pub const Reg: type = *ByteWidth;
 
 pub const RegIdx = enum(usize) { ip, sp, fp, flag, gr0, gr1, count };
-pub const InsCode = enum(usize) { push, pop, add, sub, mul, div, _and, _or, xor, _shl, ldr, ldm, cmp, jmp, jg, jz, jl, call, ret, nop, count };
+pub const InsCode = enum(usize) {
+    push,
+    pop,
+    add,
+    sub,
+    mul,
+    div,
+    _and,
+    _or,
+    xor,
+    _shl,
+    ldr,
+    ldm,
+    cmp,
+    jmp,
+    jg,
+    jz,
+    jl,
+    call,
+    ret,
+    nop,
+    count,
+};
 pub const Ext = struct {
     pub const imm = 0b00;
     pub const reg = 0b01;
