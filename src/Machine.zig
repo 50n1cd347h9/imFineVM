@@ -58,6 +58,7 @@ pub fn init() Self {
 pub fn run(self: *Self, length: usize) void {
     self.time_started = time.Instant.now() catch unreachable;
     self.instructions = Instructions.init(self);
+    self.instructions.registerSelf();
     self.instructions.refresh();
 
     const main_thread = Thread.spawn(
@@ -80,8 +81,7 @@ pub fn run(self: *Self, length: usize) void {
 pub fn run_cpu(self: *Self, length: usize) void {
     const cpu: *Cpu = &self.cpu;
 
-    var i: usize = 0;
-    while (cpu.ip < @as(ByteWidth, @intCast(length))) : (i += 1) {
+    while (cpu.ip < @as(ByteWidth, @intCast(length))) {
         defer self.video_controller.state.terminate = true;
         self.step();
         // std.time.sleep(0);
