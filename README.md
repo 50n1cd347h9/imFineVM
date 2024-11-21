@@ -52,9 +52,9 @@ ext reveals what the second operand indicates
 [] means that inside it is a reference to memory
 ## len
 len means length of second oprand
-|0 bit|8|16|32|64|128|
-|-|-|-|-|-|-|
 |000|001|010|011|100|101|
+|-|-|-|-|-|-|
+|0 bit|8|16|32|64|128|
 
 ## flag register
 |0|1|
