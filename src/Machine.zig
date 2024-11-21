@@ -58,6 +58,7 @@ pub fn init() Self {
 pub fn run(self: *Self, length: usize) void {
     self.time_started = time.Instant.now() catch unreachable;
     self.instructions = Instructions.init(self);
+    self.instructions.refresh();
 
     const main_thread = Thread.spawn(
         .{},
