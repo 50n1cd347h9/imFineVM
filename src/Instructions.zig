@@ -20,7 +20,6 @@ const Imm16: type = machine_config.Imm16;
 const Imm8: type = machine_config.Imm8;
 const Ref: type = machine_config.Ref;
 const Reg: type = machine_config.Reg;
-const opc_sz = machine_config.opc_sz;
 const ByteWidth = machine_config.ByteWidth;
 const SignedByteWidth = machine_config.SignedByteWidth;
 const InsCode = machine_config.InsCode;
@@ -28,6 +27,7 @@ const MEMORY_SIZE = machine_config.MEMORY_SIZE;
 const Ext = machine_config.Ext;
 
 const ext_msk: u8 = 0b00000011;
+const OPC_SZ = machine_config.OPC_SZ;
 const machine_bytes: u8 = @sizeOf(ByteWidth);
 
 const Self = @This();
@@ -44,6 +44,8 @@ imm_bytes: u8,
 first_reg: Reg,
 ins_tab: []*const fn (*Self) void,
 // ins_tab: [@intFromEnum(InsCode.count)]*const fn (*Self) void,
+//
+// const instruction_table: [@intFromEnum(InsCode.count)]*const fn(*Self) void
 
 pub fn init(machine: *Machine) Self {
     const cpu = &machine.cpu;
@@ -77,8 +79,8 @@ pub fn refresh(self: *Self) void {
     const sp = cpu.sp;
     const memory = self.memory;
     const ext = memory[ip] & ext_msk;
-    const len = memory[ip + opc_sz] >> 5;
-    const first = memory[ip + opc_sz] << 3 >> 5;
+    const len = memory[ip + OPC_SZ] >> 5;
+    const first = memory[ip + OPC_SZ] << 3 >> 5;
     const imm_bytes = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
     const first_reg = getReg(cpu, first);
 
@@ -92,20 +94,20 @@ pub fn refresh(self: *Self) void {
     self.first_reg = first_reg;
 }
 
-fn instruction_table() type {
+pub fn instruction_table() type {
     return struct {
         var func_vec: [@intFromEnum(InsCode.count)]*const fn (*Self) void = undefined;
 
-        fn init() *[@intFromEnum(InsCode.count)]*const fn (*Self) void {
+        pub fn init() *[@intFromEnum(InsCode.count)]*const fn (*Self) void {
             func_vec[@intFromEnum(InsCode.push)] = push;
             func_vec[@intFromEnum(InsCode.pop)] = pop;
             func_vec[@intFromEnum(InsCode.add)] = add;
             func_vec[@intFromEnum(InsCode.sub)] = sub;
             func_vec[@intFromEnum(InsCode.div)] = div;
-            func_vec[@intFromEnum(InsCode.and_)] = _and;
-            func_vec[@intFromEnum(InsCode.or_)] = _or;
+            func_vec[@intFromEnum(InsCode._and)] = _and;
+            func_vec[@intFromEnum(InsCode._or)] = _or;
             func_vec[@intFromEnum(InsCode.xor)] = xor;
-            func_vec[@intFromEnum(InsCode.shl_)] = _shl;
+            func_vec[@intFromEnum(InsCode._shl)] = _shl;
             func_vec[@intFromEnum(InsCode.ldr)] = ldr;
             func_vec[@intFromEnum(InsCode.ldm)] = ldm;
             func_vec[@intFromEnum(InsCode.cmp)] = cmp;
@@ -224,10 +226,6 @@ pub fn push(self: *Self) void {
             return;
         },
     }
-}
-
-pub fn hoge(self: *Self) void {
-    print("ip_ofs = {d}\n", .{self.ip_ofs});
 }
 
 pub fn add(self: *Self) void {
@@ -445,7 +443,7 @@ pub fn jg(self: *Self) void {
     if ((self.cpu.flag & 0b00) == 0b00) {
         dst_loc = self.jump_switching();
     } else {
-        dst_loc += self.cpu.ip + opc_sz;
+        dst_loc += self.cpu.ip + OPC_SZ;
     }
 }
 
@@ -458,7 +456,7 @@ pub fn jz(self: *Self) void {
     if ((self.cpu.flag & 0b01) == 0b01) {
         dst_loc = self.jump_switching();
     } else {
-        dst_loc += self.cpu.ip + opc_sz;
+        dst_loc += self.cpu.ip + OPC_SZ;
     }
 }
 
@@ -471,7 +469,7 @@ pub fn jl(self: *Self) void {
     if ((self.cpu.flag & 0b10) == 0b10) {
         dst_loc = self.jump_switching();
     } else {
-        dst_loc += self.cpu.ip + opc_sz;
+        dst_loc += self.cpu.ip + OPC_SZ;
     }
 }
 
@@ -495,7 +493,7 @@ pub fn ret(self: *Self) void {
 }
 
 pub fn nop(self: *Self) void {
-    self.ip_ofs = opc_sz;
+    self.ip_ofs = OPC_SZ;
     defer {
         self.cpu.ip += self.ip_ofs;
         self.refresh();

@@ -11,7 +11,7 @@ const Ref: type = machine_config.Ref;
 const Reg: type = machine_config.Reg;
 const machine_bytes: u8 = @sizeOf(ByteWidth);
 
-pub fn getReg(cpu: *Cpu, reg: u8) Reg {
+pub inline fn getReg(cpu: *Cpu, reg: u8) Reg {
     switch (reg) {
         @intFromEnum(RegIdx.ip) => return &cpu.ip,
         @intFromEnum(RegIdx.sp) => return &cpu.sp,
@@ -23,7 +23,7 @@ pub fn getReg(cpu: *Cpu, reg: u8) Reg {
     }
 }
 
-pub fn fetch(mem_ref: [*]u8, src_bytes: u8) ByteWidth {
+pub inline fn fetch(mem_ref: [*]u8, src_bytes: u8) ByteWidth {
     var value: ByteWidth = 0;
     for (0..src_bytes) |i| {
         const ofs: u5 = @intCast(i);
@@ -33,14 +33,14 @@ pub fn fetch(mem_ref: [*]u8, src_bytes: u8) ByteWidth {
     return value;
 }
 
-pub fn copy(dst: [*]u8, src: [*]u8, src_bytes: u8) void {
+pub inline fn copy(dst: [*]u8, src: [*]u8, src_bytes: u8) void {
     for (0..src_bytes) |i|
         dst[i] = src[i];
     for (src_bytes..machine_bytes) |i|
         dst[i] = 0x00;
 }
 
-pub fn write(mem_ref: [*]u8, value: ByteWidth, src_bytes: u8) void {
+pub inline fn write(mem_ref: [*]u8, value: ByteWidth, src_bytes: u8) void {
     const mask: ByteWidth = 0xff;
     for (0..src_bytes) |i| {
         const ofs: u5 = @intCast(i);
