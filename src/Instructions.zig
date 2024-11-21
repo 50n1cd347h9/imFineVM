@@ -23,12 +23,12 @@ const Reg: type = machine_config.Reg;
 const ByteWidth = machine_config.ByteWidth;
 const SignedByteWidth = machine_config.SignedByteWidth;
 const InsCode = machine_config.InsCode;
-const MEMORY_SIZE = machine_config.MEMORY_SIZE;
 const Ext = machine_config.Ext;
 
-const ext_msk: u8 = 0b00000011;
+const EXT_MSK = machine_config.EXT_MSK;
 const OPC_SZ = machine_config.OPC_SZ;
-const machine_bytes: u8 = @sizeOf(ByteWidth);
+const MACHINE_BYTES: u8 = machine_config.MACHINE_BYTES;
+const MEMORY_SIZE = machine_config.MEMORY_SIZE;
 
 const Self = @This();
 
@@ -43,16 +43,13 @@ first: u8,
 imm_bytes: u8,
 first_reg: Reg,
 ins_tab: []*const fn (*Self) void,
-// ins_tab: [@intFromEnum(InsCode.count)]*const fn (*Self) void,
-//
-// const instruction_table: [@intFromEnum(InsCode.count)]*const fn(*Self) void
 
 pub fn init(machine: *Machine) Self {
     const cpu = &machine.cpu;
     const ip = cpu.ip;
     const sp = cpu.sp;
     const memory = machine.memory;
-    const ext = memory[ip] & ext_msk;
+    const ext = memory[ip] & EXT_MSK;
     const len = memory[ip + 1] >> 5;
     const first = memory[ip + 1] << 3 >> 5;
     const imm_bytes = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
@@ -78,7 +75,7 @@ pub fn refresh(self: *Self) void {
     const ip = cpu.ip;
     const sp = cpu.sp;
     const memory = self.memory;
-    const ext = memory[ip] & ext_msk;
+    const ext = memory[ip] & EXT_MSK;
     const len = memory[ip + OPC_SZ] >> 5;
     const first = memory[ip + OPC_SZ] << 3 >> 5;
     const imm_bytes = if (len != 0) @divExact(pow(u8, 2, len + 2), 8) else 0;
@@ -165,7 +162,7 @@ fn arithmetic_switching(self: *Self, execute: fn (Reg, ByteWidth) ByteWidth) Byt
         },
         Ext.reg_ref => {
             const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
-            const src = fetch(memory + src_ref, machine_bytes);
+            const src = fetch(memory + src_ref, MACHINE_BYTES);
             return execute(dst_reg, src);
         },
         else => unreachable,
@@ -176,22 +173,22 @@ pub fn pop(self: *Self) void {
     self.ip_ofs += self.imm_bytes;
     defer {
         self.cpu.ip += self.ip_ofs;
-        self.cpu.sp += machine_bytes;
+        self.cpu.sp += MACHINE_BYTES;
         self.refresh();
     }
     switch (self.ext) {
         Ext.reg => {
             const dst_reg: Reg = getReg(self.cpu, self.memory[self.ip + 2]);
-            const src = fetch(self.memory + self.sp, machine_bytes);
+            const src = fetch(self.memory + self.sp, MACHINE_BYTES);
             dst_reg.* = src;
         },
         Ext.imm_ref => {
             const dst_ref: Ref = fetch(self.memory + self.ip + 2, self.imm_bytes);
-            copy(self.memory + dst_ref, self.memory + self.sp, machine_bytes);
+            copy(self.memory + dst_ref, self.memory + self.sp, MACHINE_BYTES);
         },
         Ext.reg_ref => {
             const dst_ref = (getReg(self.cpu, self.memory[self.ip + 2])).*;
-            copy(self.memory + dst_ref, self.memory + self.sp, machine_bytes);
+            copy(self.memory + dst_ref, self.memory + self.sp, MACHINE_BYTES);
         },
         else => {
             return;
@@ -203,24 +200,24 @@ pub fn push(self: *Self) void {
     self.ip_ofs += self.imm_bytes;
     defer {
         self.cpu.ip += self.ip_ofs;
-        self.cpu.sp -= machine_bytes;
+        self.cpu.sp -= MACHINE_BYTES;
         self.refresh();
     }
     switch (self.ext) {
         Ext.imm => {
-            copy(self.memory + self.sp - machine_bytes, self.memory + self.ip + 2, self.imm_bytes);
+            copy(self.memory + self.sp - MACHINE_BYTES, self.memory + self.ip + 2, self.imm_bytes);
         },
         Ext.reg => {
             const src = (getReg(self.cpu, self.memory[self.ip + 2])).*;
-            write(self.memory + self.sp - machine_bytes, src, machine_bytes);
+            write(self.memory + self.sp - MACHINE_BYTES, src, MACHINE_BYTES);
         },
         Ext.imm_ref => {
-            const src_ref: Ref = fetch(self.memory + self.ip + 2, machine_bytes);
-            copy(self.memory + self.sp - machine_bytes, self.memory + src_ref, machine_bytes);
+            const src_ref: Ref = fetch(self.memory + self.ip + 2, MACHINE_BYTES);
+            copy(self.memory + self.sp - MACHINE_BYTES, self.memory + src_ref, MACHINE_BYTES);
         },
         Ext.reg_ref => {
             const src_ref: Ref = (getReg(self.cpu, self.memory[self.ip + 2])).*;
-            copy(self.memory + self.sp - machine_bytes, self.memory + src_ref, machine_bytes);
+            copy(self.memory + self.sp - MACHINE_BYTES, self.memory + src_ref, MACHINE_BYTES);
         },
         else => {
             return;
@@ -377,7 +374,7 @@ pub fn ldr(self: *Self) void {
         },
         Ext.imm_ref => {
             const src_ref: Ref = fetch(memory + ip + 2, imm_bytes);
-            const src = fetch(memory + src_ref, machine_bytes);
+            const src = fetch(memory + src_ref, MACHINE_BYTES);
             dst_reg.* = src;
         },
         Ext.reg_ref => {
@@ -410,15 +407,15 @@ pub fn ldm(self: *Self) void {
         },
         Ext.reg => {
             const src_reg: Reg = getReg(cpu, memory[ip + 2]);
-            write(memory + dst_ref, src_reg.*, machine_bytes);
+            write(memory + dst_ref, src_reg.*, MACHINE_BYTES);
         },
         Ext.imm_ref => {
             const src_ref: Ref = fetch(memory + ip + 2, imm_bytes);
-            copy(memory + dst_ref, memory + src_ref, machine_bytes);
+            copy(memory + dst_ref, memory + src_ref, MACHINE_BYTES);
         },
         Ext.reg_ref => {
             const src_ref: Ref = (getReg(cpu, memory[ip + 2])).*;
-            copy(memory + dst_ref, memory + src_ref, machine_bytes);
+            copy(memory + dst_ref, memory + src_ref, MACHINE_BYTES);
         },
         else => {
             return;
@@ -475,18 +472,18 @@ pub fn jl(self: *Self) void {
 
 pub fn call(self: *Self) void {
     defer {
-        self.cpu.sp -= machine_bytes;
+        self.cpu.sp -= MACHINE_BYTES;
         self.refresh();
     }
     const ret_addr = self.ip + self.ip_ofs + self.imm_bytes;
-    write(self.memory + self.sp - machine_bytes, ret_addr, machine_bytes);
+    write(self.memory + self.sp - MACHINE_BYTES, ret_addr, MACHINE_BYTES);
     self.jmp();
 }
 
 pub fn ret(self: *Self) void {
-    const ret_addr: ByteWidth = fetch(self.memory + self.sp, machine_bytes);
+    const ret_addr: ByteWidth = fetch(self.memory + self.sp, MACHINE_BYTES);
     defer {
-        self.cpu.sp += machine_bytes;
+        self.cpu.sp += MACHINE_BYTES;
         self.cpu.ip = ret_addr;
         self.refresh();
     }
