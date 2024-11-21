@@ -14,7 +14,7 @@ The instruction consists of at least 3 bytes.
 Its structure is as follows
 ```
 | opcode 6bits           | ext 2bits   | 
-| len 2bits | reg 2bits| padding 3bits |
+| len 3bits | reg 3bits  |padding 2bits|
 | immediate or register 1~128bits      |
 ```
 ## oprands
