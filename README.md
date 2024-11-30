@@ -21,7 +21,7 @@ Its structure is as follows
 reg means register and indicates the first operand.<br>
 The third byte means immediate or register and indicates the second operand.<br>
 
-## registers and idnetifier
+## registers and identifier
 Each of the six registers is assigned the following numbers
 |ip|sp|fp|flag|gr0|gr1|
 |-|-|-|-|-|-|
@@ -70,6 +70,8 @@ nop
   - load to register
 - ldm
   - load to memory pointed by register, first operand
+- jmp
+  - jump specified address. Takes immediate, register or label as an operand
 - jg
   - jmp if greater
 - jz
