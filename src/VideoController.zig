@@ -6,14 +6,14 @@ const debugPrint = std.debug.print;
 
 const Self = @This();
 
-state: CtrlerState,
+state: CtrlrState,
 video_memory: []u8,
 
 const MEMORY_SIZE = 0x2000;
 
 pub var memory_buffer = [_]u8{0} ** MEMORY_SIZE;
 
-const CtrlerState = struct {
+const CtrlrState = struct {
     terminate: bool,
 };
 
