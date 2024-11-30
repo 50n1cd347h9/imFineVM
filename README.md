@@ -22,7 +22,7 @@ reg means register and indicates the first operand.<br>
 The third byte means immediate or register and indicates the second operand.<br>
 For instructions that take only one operand, that operand is represented as a second operand
 
-## registers
+## registers and idnetifier
 Each of the six registers is assigned the following numbers
 |ip|sp|fp|flag|gr0|gr1|
 |-|-|-|-|-|-|
@@ -35,9 +35,9 @@ Each of the six registers is assigned the following numbers
 `gr0` and `gr1` are general-purpose registers
 
 
-## opcode
-|push|pop|add|sub|mul|div|and|or|xor|shl|ldr|ldm|cmp|jmp|jg|jz|jl|call|ret|nop|
-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|
+## instructions and opcode
+|push|pop|add|sub|mul|div|and|or|xor|not|shl|ldr|ldm|cmp|jmp|jg|jz|jl|nop|
+|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|
 |0x0|0x1|0x2|0x3|0x4|0x5|0x6|0x7|0x8|0x9|0xa|0xb|0xc|0xd|0xe|0xf|0x10|0x11|0x12|0x13|
 
 `ldr` and `ldm` mean load to register and load to memory, respectively.
