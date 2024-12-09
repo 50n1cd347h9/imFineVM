@@ -46,6 +46,8 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn debug(self: *Self) void {
+    self.deleteBrkPt(null);
+
     printCpuState(&self.machine);
     self.repl();
 }
@@ -97,6 +99,9 @@ fn eval(self: *Self, line: []const u8) void {
 fn readOne(line: []const u8) []const u8 {
     var end: usize = start;
 
+    if (start >= line.len)
+        return line[0..0];
+
     for (line[start..line.len]) |char| {
         if (char == ' ' or char == '\t') {
             start += 1;
@@ -118,6 +123,8 @@ fn readOne(line: []const u8) []const u8 {
 
 fn command(self: *Self, cmd_str: []const u8, line: []const u8) void {
     switch (cmd_str[0]) {
+        'i' => self.printBrkPts(),
+        'd' => self.deleteBrkPt(line),
         's' => step(),
         'r' => run(),
         'b' => self._break(line),
@@ -151,6 +158,9 @@ fn submitBrkPt(self: *Self, addr: ByteWidth) void {
         0,
     };
 
+    if (self.addr_words_map.contains(addr))
+        return;
+
     const word = self.getNPushWord(addr) catch "\x00";
     self.addr_words_map.put(addr, word) catch {};
 
@@ -164,7 +174,30 @@ fn getNPushWord(self: *Self, addr: ByteWidth) ![]u8 {
     return try a.dupe(u8, self.machine.memory[addr..len]);
 }
 
-fn deleteBrkPt() void {}
+fn deleteBrkPt(self: *Self, line: ?[]const u8) void {
+    var addr = self.machine.cpu.ip;
+
+    if (line != null) {
+        const addr_str = readOne(line.?);
+        if (toInt(addr_str)) |_addr| {
+            addr = @intCast(_addr);
+        } else {
+            stdout.print("invalid value {s}\n", .{addr_str}) catch {};
+        }
+    }
+
+    // if (!self.addr_words_map.contains(addr))
+    //     return;
+
+    if (self.addr_words_map.get(addr)) |word| {
+        for (word, 0..) |byte, i|
+            self.machine.memory[addr + i] = byte;
+    }
+}
+
+fn printBrkPts(self: *Self) void {
+    _ = self;
+}
 
 // check if given address is aligned
 fn isValidAddr(self: *Self, addr: ByteWidth) bool {
@@ -192,9 +225,9 @@ inline fn getImmLen(len: u8) u8 {
 
 fn toInt(buf: []const u8) ?u128 {
     if (buf.len > 2 and buf[0] == '0' and buf[1] == 'x') {
-        return fmt.parseInt(u128, buf[2..buf.len], 16) catch 0;
+        return fmt.parseInt(u128, buf[2..buf.len], 16) catch null;
     } else {
-        return fmt.parseInt(u128, buf, 10) catch 0;
+        return fmt.parseInt(u128, buf, 10) catch null;
     }
     return null;
 }
