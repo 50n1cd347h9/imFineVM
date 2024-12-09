@@ -21,7 +21,7 @@ const Machine = struct {
 };
 
 machine: Machine,
-addr_words_map: std.AutoHashMap(ByteWidth, []u8), // (addr, word)
+addr_words_map: std.AutoHashMap(ByteWidth, []const u8), // (addr, word)
 last_inspected: ByteWidth, // address last inspected
 word_origins: std.ArrayList(ByteWidth),
 
@@ -31,9 +31,9 @@ const a = gpa.allocator();
 pub fn init(cpu: *Cpu, memory: [*]u8) Self {
     return Self{
         .machine = Machine{ .cpu = cpu, .memory = memory },
-        .addr_words_map = std.AutoHashMap(ByteWidth, []u8).init(a),
+        .addr_words_map = std.AutoHashMap(ByteWidth, []const u8).init(a),
         .last_inspected = 0,
-        .word_origins = std.ArrayList(ByteWidth).init(),
+        .word_origins = std.ArrayList(ByteWidth).init(a),
     };
 }
 
@@ -90,7 +90,7 @@ fn eval(self: *Self, line: []const u8) void {
 
     while (start < line.len) {
         const cmd = readOne(line);
-        self.command(self, cmd, line);
+        self.command(cmd, line);
     }
 }
 
@@ -137,7 +137,7 @@ fn _break(self: *Self, line: []const u8) void {
     const arg_str = readOne(line);
 
     if (toInt(arg_str)) |addr| {
-        if (!isValidAddr(addr))
+        if (!self.isValidAddr(@intCast(addr)))
             return;
 
         self.submitBrkPt(@intCast(addr));
@@ -151,17 +151,17 @@ fn submitBrkPt(self: *Self, addr: ByteWidth) void {
         0,
     };
 
-    const word = self.getNPushWord(addr);
+    const word = self.getNPushWord(addr) catch "\x00";
     self.addr_words_map.put(addr, word) catch {};
 
     for (int_0, 0..) |byte, i|
-        self.memory[addr + i] = byte;
+        self.machine.memory[addr + i] = byte;
 }
 
-fn getNPushWord(self: *Self, addr: ByteWidth) void {
+fn getNPushWord(self: *Self, addr: ByteWidth) ![]u8 {
     const tmp = self.getLen(addr);
     const len = 2 + getImmLen(tmp);
-    return a.dupe(self.memory[addr..len]);
+    return try a.dupe(u8, self.machine.memory[addr..len]);
 }
 
 fn deleteBrkPt() void {}
@@ -182,8 +182,8 @@ fn traceWords(self: *Self) void {
     }
 }
 
-inline fn getLen(self: *Self, addr: ByteWidth) ?u8 {
-    return self.memory[addr + OPC_SZ] >> 5;
+inline fn getLen(self: *Self, addr: ByteWidth) u8 {
+    return self.machine.memory[addr + OPC_SZ] >> 5;
 }
 
 inline fn getImmLen(len: u8) u8 {
