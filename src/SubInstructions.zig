@@ -60,3 +60,8 @@ pub inline fn write(dst: Ref, value: ByteWidth, length: u8) void {
 pub inline fn deref(ref: Ref, length: u8) ByteWidth {
     return fetch(ref, length);
 }
+
+pub inline fn memBitNot(ref: Ref, length: u8) void {
+    for (0..length) |i|
+        _self_instructions.memory[ref + i] = ~(_self_instructions.memory[ref + i]);
+}

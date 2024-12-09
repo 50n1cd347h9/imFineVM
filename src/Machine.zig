@@ -58,6 +58,7 @@ pub fn init() Self {
 pub fn run(self: *Self, length: usize) void {
     self.time_started = time.Instant.now() catch unreachable;
     self.instructions = Instructions.init(self);
+    defer self.instructions.debugger.deinit();
     self.instructions.registerSelf();
     self.instructions.refresh();
 
@@ -66,15 +67,15 @@ pub fn run(self: *Self, length: usize) void {
         Self.run_cpu,
         .{ self, length },
     ) catch unreachable;
-    const video_thread = Thread.spawn(
-        .{},
-        VideoController.run,
-        .{&self.video_controller},
-    ) catch unreachable;
+    // const video_thread = Thread.spawn(
+    //     .{},
+    //     VideoController.run,
+    //     .{&self.video_controller},
+    // ) catch unreachable;
 
     defer {
         main_thread.join();
-        video_thread.join();
+        //     video_thread.join();
     }
 }
 
@@ -97,7 +98,9 @@ inline fn getOpcode(self: *Self) u8 {
 /// execute single insturction
 inline fn step(self: *Self) void {
     const opcode = self.getOpcode();
-    self.instructions.ins_tab[opcode](&self.instructions);
+    _ = opcode;
+    // self.instructions.ins_tab[opcode](&self.instructions);
+    self.instructions.int();
 }
 
 pub fn printDebugInfo(self: *Self) void {
