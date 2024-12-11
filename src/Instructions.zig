@@ -3,6 +3,7 @@ const SubInstructions = @import("./SubInstructions.zig");
 const Machine = @import("./Machine.zig");
 const machine_config = @import("./machine_config.zig");
 const Debugger = @import("./Debugger.zig");
+const VideoController = @import("./VideoController.zig");
 
 const print = std.debug.print;
 const pow = std.math.pow;
@@ -45,7 +46,8 @@ first: u8,
 imm_len: u8,
 first_reg: Reg,
 ins_tab: []*const fn (*Self) void,
-debugger: Debugger,
+video_controller: *VideoController,
+debugger: *Debugger,
 
 pub var _self: *Self = undefined;
 comptime {
@@ -70,7 +72,9 @@ pub fn init(machine: *Machine) Self {
         .first = undefined,
         .imm_len = undefined,
         .first_reg = undefined,
-        .debugger = Debugger.init(cpu, memory),
+
+        .video_controller = &machine.video_controller,
+        .debugger = &machine.debugger,
     };
 }
 
@@ -461,15 +465,19 @@ pub fn int(self: *Self) void {
     }
     const src = fetch(self.cpu.ip + 2, self.imm_len);
     switch (src) {
+        // debug
         0 => {
-            // debug
-            // Debugger.debug(self.cpu, self.memory);
+            self.debugger.debug();
         },
+        // video out
         1 => {
-            // video out
+            self.video_controller.state.wait = false;
+            defer self.video_controller.state.wait = true;
+
+            std.time.sleep(0);
         },
         else => {
-            Debugger.debug(&self.debugger);
+            self.debugger.debug();
         },
     }
 }

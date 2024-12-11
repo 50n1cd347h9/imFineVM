@@ -2,6 +2,7 @@ const std = @import("std");
 const machine_config = @import("./machine_config.zig");
 const Instructions = @import("./Instructions.zig");
 const VideoController = @import("./VideoController.zig");
+const Debugger = @import("./Debugger.zig");
 
 const debugPrint = std.debug.print;
 const time = std.time;
@@ -15,9 +16,10 @@ const Self = @This();
 
 cpu: Cpu,
 memory: [*]u8,
-instructions: Instructions,
-time_started: std.time.Instant,
 video_controller: VideoController,
+instructions: Instructions,
+debugger: Debugger,
+time_started: std.time.Instant,
 
 /// ip: instruction pointer
 /// sp: stack pointer
@@ -50,33 +52,48 @@ pub fn init() Self {
         },
         .memory = @ptrCast(@constCast(&memory_buffer)),
         .instructions = undefined,
-        .time_started = undefined,
         .video_controller = VideoController.init(),
+        .debugger = undefined,
+        .time_started = undefined,
     };
+}
+
+pub fn deinit(self: *Self) void {
+    _ = self;
 }
 
 pub fn run(self: *Self, length: usize) void {
     self.time_started = time.Instant.now() catch unreachable;
+
+    self.debugger = Debugger.init(&self.cpu, self.memory);
+    defer self.debugger.deinit();
+
     self.instructions = Instructions.init(self);
-    defer self.instructions.debugger.deinit();
     self.instructions.registerSelf();
     self.instructions.refresh();
 
-    const main_thread = Thread.spawn(
+    const machine_thread = machineThread(self, length);
+    const video_thread = videoThread(self);
+    defer {
+        machine_thread.join();
+        video_thread.join();
+    }
+}
+
+inline fn machineThread(self: *Self, length: usize) Thread {
+    return Thread.spawn(
         .{},
         Self.run_cpu,
         .{ self, length },
     ) catch unreachable;
-    // const video_thread = Thread.spawn(
-    //     .{},
-    //     VideoController.run,
-    //     .{&self.video_controller},
-    // ) catch unreachable;
+}
 
-    defer {
-        main_thread.join();
-        //     video_thread.join();
-    }
+inline fn videoThread(self: *Self) Thread {
+    return Thread.spawn(
+        .{},
+        VideoController.run,
+        .{&self.video_controller},
+    ) catch unreachable;
 }
 
 pub fn run_cpu(self: *Self, length: usize) void {

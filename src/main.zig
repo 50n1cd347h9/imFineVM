@@ -27,9 +27,12 @@ pub fn main() !void {
     defer executable.close();
 
     var machine = Machine.init();
+    defer machine.deinit();
+
     const length: usize = try executable.readAll(machine.memory[0..MEMORY_SIZE]);
 
     machine.run(length);
+
     machine.printDebugInfo();
 }
 

@@ -15,6 +15,7 @@ const InsCode = machine_config.InsCode;
 const ByteWidth = machine_config.ByteWidth;
 const Cpu = @import("./Machine.zig").Cpu;
 const Self = @This();
+
 const Machine = struct {
     cpu: *Cpu,
     memory: [*]u8,
@@ -45,7 +46,18 @@ pub fn deinit(self: *Self) void {
     self.word_origins.deinit();
 }
 
+inline fn info(msg: []const u8) void {
+    stdout.print("[*] {s}\n", .{msg}) catch {};
+}
+
+inline fn warn(msg: []const u8) void {
+    stdout.print("[!] {s}\n", .{msg}) catch {};
+}
+
 pub fn debug(self: *Self) void {
+    if (self.word_origins.items.len == 0)
+        self.traceWords();
+
     self.deleteBrkPt(null);
 
     printCpuState(&self.machine);
@@ -78,12 +90,22 @@ fn printStack(memory: [*]u8) void {
 /// read, evaluate, print loop
 fn repl(self: *Self) void {
     var buf = [_]u8{0} ** 0x100;
+
     while (true) {
-        @memset(&buf, 0);
-        stdout.print("debug >> ", .{}) catch {};
-        const line = stdin.readUntilDelimiter(&buf, '\n') catch "death";
+        stdout.print("debug> ", .{}) catch {};
+        const line = readLine(&buf);
         self.eval(line);
     }
+}
+
+inline fn readLine(buf: *[0x100]u8) []u8 {
+    const err_msg = "death";
+
+    @memset(buf, 0);
+    return stdin.readUntilDelimiter(buf, '\n') catch {
+        mem.copyForwards(u8, buf, err_msg);
+        return buf[0..err_msg.len];
+    };
 }
 
 var start: usize = 0;
@@ -125,15 +147,23 @@ fn command(self: *Self, cmd_str: []const u8, line: []const u8) void {
     switch (cmd_str[0]) {
         'i' => self.printBrkPts(),
         'd' => self.deleteBrkPt(line),
-        's' => step(),
+        's' => self.step(),
         'r' => run(),
         'b' => self._break(line),
-        else => {},
+        else => {
+            warn("unknown command: ");
+            warn(cmd_str);
+        },
     }
 }
 
 /// insert 'int 0' into next instruction and run
-fn step() void {
+fn step(self: *Self) void {
+    const curr_ip = self.machine.cpu.ip;
+    const len = self.getLen(curr_ip);
+    const next_ip = 2 + getImmLength(len);
+
+    self.submitBrkPt(next_ip);
     run();
 }
 
@@ -144,33 +174,40 @@ fn _break(self: *Self, line: []const u8) void {
     const arg_str = readOne(line);
 
     if (toInt(arg_str)) |addr| {
-        if (!self.isValidAddr(@intCast(addr)))
+        if (!self.isValidAddr(addr))
             return;
-
-        self.submitBrkPt(@intCast(addr));
+        self.submitBrkPt(addr);
+    } else {
+        warn("invalid argument");
+        info(arg_str);
+        info("usage: break <addr>");
     }
 }
 
 fn submitBrkPt(self: *Self, addr: ByteWidth) void {
-    const int_0 = [_]u8{ // debug instruction
-        @intFromEnum(InsCode.int) << 2,
-        1 << 5,
-        0,
-    };
-
-    if (self.addr_words_map.contains(addr))
+    if (self.addr_words_map.contains(addr)) // if given address already submitted
         return;
 
     const word = self.getNPushWord(addr) catch "\x00";
     self.addr_words_map.put(addr, word) catch {};
 
+    self.insertInt0(addr);
+}
+
+inline fn insertInt0(self: *Self, addr: ByteWidth) void {
+    const int_0 = [_]u8{ // debug instruction
+        @intFromEnum(InsCode.int) << 2,
+        1 << 5,
+        0,
+    };
+    // insert int_0
     for (int_0, 0..) |byte, i|
         self.machine.memory[addr + i] = byte;
 }
 
 fn getNPushWord(self: *Self, addr: ByteWidth) ![]u8 {
     const tmp = self.getLen(addr);
-    const len = 2 + getImmLen(tmp);
+    const len = 2 + getImmLength(tmp);
     return try a.dupe(u8, self.machine.memory[addr..len]);
 }
 
@@ -180,14 +217,12 @@ fn deleteBrkPt(self: *Self, line: ?[]const u8) void {
     if (line != null) {
         const addr_str = readOne(line.?);
         if (toInt(addr_str)) |_addr| {
-            addr = @intCast(_addr);
+            addr = _addr;
         } else {
-            stdout.print("invalid value {s}\n", .{addr_str}) catch {};
+            warn("invalid argument:");
+            info(addr_str);
         }
     }
-
-    // if (!self.addr_words_map.contains(addr))
-    //     return;
 
     if (self.addr_words_map.get(addr)) |word| {
         for (word, 0..) |byte, i|
@@ -199,7 +234,7 @@ fn printBrkPts(self: *Self) void {
     _ = self;
 }
 
-// check if given address is aligned
+/// check if given address is aligned
 fn isValidAddr(self: *Self, addr: ByteWidth) bool {
     for (self.word_origins.items) |origin|
         if (addr == origin)
@@ -207,27 +242,34 @@ fn isValidAddr(self: *Self, addr: ByteWidth) bool {
     return false;
 }
 
+// TODO: check if opcode is valid
 fn traceWords(self: *Self) void {
+    info("Inspecting memory, please wait...");
+
+    self.word_origins.append(0) catch
+        warn("internal error: arraylist");
+
     while (self.last_inspected < MEMORY_SIZE) {
         const tmp = self.getLen(self.last_inspected);
-        self.last_inspected += 2 + getImmLen(tmp);
-        try self.word_origins.push(self.last_inspected);
+        self.last_inspected += (2 + getImmLength(tmp));
+
+        self.word_origins.append(self.last_inspected) catch
+            warn("internal error: arraylist");
     }
+
+    info("done\n");
 }
 
 inline fn getLen(self: *Self, addr: ByteWidth) u8 {
     return self.machine.memory[addr + OPC_SZ] >> 5;
 }
 
-inline fn getImmLen(len: u8) u8 {
+inline fn getImmLength(len: u8) u8 {
     return if (len != 0) @divExact(math.pow(u8, 2, len + 2), 8) else 0;
 }
 
-fn toInt(buf: []const u8) ?u128 {
-    if (buf.len > 2 and buf[0] == '0' and buf[1] == 'x') {
-        return fmt.parseInt(u128, buf[2..buf.len], 16) catch null;
-    } else {
-        return fmt.parseInt(u128, buf, 10) catch null;
-    }
-    return null;
+fn toInt(buf: []const u8) ?ByteWidth {
+    if (buf.len > 2 and buf[0] == '0' and buf[1] == 'x') // if hexadecimal
+        return fmt.parseInt(ByteWidth, buf[2..buf.len], 16) catch null;
+    return fmt.parseInt(ByteWidth, buf, 10) catch null;
 }
