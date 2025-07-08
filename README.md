@@ -15,7 +15,7 @@ Its structure is as follows
 ```
 | opcode 6bits           | ext 2bits   | 
 | len 3bits | reg 3bits  |padding 2bits|
-| immediate or register 1~128bits      |
+| immediate or register. This field can take 8,16,32,64 or 128bits      |
 ```
 ## oprands
 reg means register and indicates the first operand.<br>
